@@ -1,4 +1,5 @@
 import os
+import shutil
 import unittest
 from src.downloader import download_track, copy_existing_track
 
@@ -29,6 +30,17 @@ class TestDownloader(unittest.TestCase):
     def test_copy_existing_track(self):
         copy_existing_track("test_track", self.source_folder, self.destination_folder)
         self.assertTrue(os.path.exists(os.path.join(self.destination_folder, "test_track.mp3")))
+
+    @patch('src.downloader.spotdl.download')
+    def test_download_track(self, mock_download):
+        mock_download.return_value = None
+        download_track(self.track_id, self.track_path)
+        mock_download.assert_called_once_with([self.track_id], output=self.track_path)
+
+    @patch('shutil.copy2')
+    def test_copy_existing_track(self, mock_copy2):
+        copy_existing_track("test_track", self.source_folder, self.destination_folder)
+        mock_copy2.assert_called_once_with(os.path.join(self.source_folder, "test_track.mp3"), os.path.join(self.destination_folder, "test_track.mp3"))
 
 if __name__ == "__main__":
     unittest.main()
