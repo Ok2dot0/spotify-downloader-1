@@ -8,7 +8,8 @@ from rich.panel import Panel
 from rich.text import Text
 from rich import box
 import os
-from src.playlist_manager import fetch_and_organize_playlists, organize_tracks
+from src.spotify_api import get_user_playlists, get_user_personalized_mixes
+from src.playlist_manager import fetch_and_organize_playlists
 from src.settings import get_download_location, get_update_frequency
 
 console = Console()
@@ -45,35 +46,65 @@ def select_mixes(mixes):
     selected_mixes = [mixes['items'][idx] for idx in selected_indices if idx < len(mixes['items'])]
     return selected_mixes
 
-def update_tracks():
-    with Progress() as progress:
-        task = progress.add_task("[cyan]Updating tracks...", total=100)
-        while not progress.finished:
-            progress.update(task, advance=0.1)
+def update_tracks(selected_playlists, selected_mixes):
+    console.print("[yellow]Note: Processing currently includes ALL playlists and top tracks, not just selected ones.[/]")
+    with Progress(console=console) as progress:
+        task = progress.add_task("[cyan]Processing tracks...", total=None)
+        try:
             fetch_and_organize_playlists()
-            organize_tracks()
-            progress.update(task, advance=100)
+            progress.update(task, completed=100)
+        except Exception as e:
+            console.print(f"[bold red]An error occurred during track processing: {e}[/]")
+            progress.stop()
 
 def main():
     console.print(Panel(Text("Welcome to Spotify Playlist Downloader", justify="center"), box=box.ROUNDED))
 
-    playlists = fetch_and_organize_playlists()
-    mixes = fetch_and_organize_playlists()
+    playlists = None
+    mixes = None
 
-    display_playlists(playlists)
-    display_personalized_mixes(mixes)
+    try:
+        console.print("Fetching playlists from Spotify...")
+        playlists = get_user_playlists()
+        console.print("Fetching personalized mixes (top tracks) from Spotify...")
+        mixes = get_user_personalized_mixes()
+    except Exception as e:
+        console.print(f"[bold red]Error fetching initial data from Spotify: {e}[/]")
+        console.print("[yellow]Please check your connection and Spotify credentials/permissions.[/]")
+        return
 
-    selected_playlists = select_playlists(playlists)
-    selected_mixes = select_mixes(mixes)
+    if playlists and playlists.get('items'):
+        display_playlists(playlists)
+    else:
+        console.print("[yellow]No playlists found or error fetching playlists.[/]")
+
+    if mixes and mixes.get('items'):
+        display_personalized_mixes(mixes)
+    else:
+        console.print("[yellow]No personalized mixes (top tracks) found or error fetching them.[/]")
+
+    selected_playlists = []
+    if playlists and playlists.get('items'):
+        selected_playlists = select_playlists(playlists)
+
+    selected_mixes = []
+    if mixes and mixes.get('items'):
+        selected_mixes = select_mixes(mixes)
 
     download_location = get_download_location()
     update_frequency = get_update_frequency()
 
-    console.print(f"Download location: {download_location}")
-    console.print(f"Update frequency: {update_frequency}")
+    console.print(f"Download location: [cyan]{download_location}[/]")
+    console.print(f"Update frequency: [cyan]{update_frequency}[/]")
 
-    with Live(console=console, refresh_per_second=4):
-        update_tracks()
+    proceed = Prompt.ask("Proceed with downloading/updating tracks?", choices=["yes", "no"], default="yes")
+
+    if proceed.lower() == "yes":
+        console.print("[cyan]Starting track update process...[/]")
+        update_tracks(selected_playlists, selected_mixes)
+        console.print("[green]Track update process finished.[/]")
+    else:
+        console.print("Operation cancelled by user.")
 
 if __name__ == "__main__":
     main()
