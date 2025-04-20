@@ -1075,7 +1075,7 @@ class SpotifyBurner:
         console.clear()
         
         while True:
-            console.print("[bold cyan]IMGBURN ADVANCED SETTINGS[bold cyan]")
+            console.print("[bold cyan]IMGBURN ADVANCED SETTINGS[/bold cyan]")
             console.print("=" * 50)
             
             # Create a table to show current ImgBurn settings
