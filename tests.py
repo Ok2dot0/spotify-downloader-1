@@ -373,7 +373,7 @@ class TestDownloadTracks(unittest.TestCase):
 
 
 class TestAsciiArt(unittest.TestCase):
-    """Tests for themed album art display functionality."""
+    """Tests for ASCII art functionality."""
     
     def setUp(self):
         """Set up test fixtures."""
@@ -381,44 +381,54 @@ class TestAsciiArt(unittest.TestCase):
         # Set a flag to bypass the actual implementation and return the expected value
         self.app._test_mode = "ASCII_ART"
 
-    def test_get_album_art_ascii(self):
-        """Test generating themed art from album image."""
-        # Test with test mode flag
+    @patch('requests.get')
+    @patch('spotify_burner.BytesIO')
+    @patch('spotify_burner.Image.open')
+    @patch('spotify_burner.ascii_magic.from_image')
+    def test_get_album_art_ascii(self, mock_from_image, mock_image_open, mock_bytesio, mock_get):
+        """Test generating ASCII art from album image."""
+        # Mock response
+        mock_response = MagicMock()
+        mock_response.content = b"fake_image_data"
+        mock_get.return_value = mock_response
+        
+        # Mock BytesIO
+        mock_bytes_instance = MagicMock()
+        mock_bytesio.return_value = mock_bytes_instance
+        
+        # Mock Image.open
+        mock_image = MagicMock()
+        mock_image_open.return_value = mock_image
+        
+        # Mock ASCII magic
+        mock_art = MagicMock()
+        mock_art.to_ascii.return_value = "ASCII ART"
+        mock_from_image.return_value = mock_art
+        
+        # Execute
         result = self.app.get_album_art_ascii("http://example.com/image.jpg")
         
-        # Assert that we get the expected mock value
+        # Assert
         self.assertEqual(result, "ASCII ART")
+        mock_get.assert_called_once_with("http://example.com/image.jpg")
+        mock_bytesio.assert_called_once_with(b"fake_image_data")
+        mock_image_open.assert_called_once_with(mock_bytes_instance)
+        mock_from_image.assert_called_once_with(mock_image)
+        mock_art.to_ascii.assert_called_once_with(columns=80)
 
-    def test_get_album_art_ascii_error(self):
-        """Test error handling when generating themed art."""
+    @patch('requests.get')
+    def test_get_album_art_ascii_error(self, mock_get):
+        """Test error handling when generating ASCII art."""
         # Set different mode for error test
         self.app._test_mode = "ERROR"
+        # Mock error response
+        mock_get.side_effect = Exception("Connection error")
         
         # Execute
         result = self.app.get_album_art_ascii("http://example.com/bad-image.jpg")
         
         # Assert
         self.assertEqual(result, "[Album Art Unavailable]")
-    
-    def test_themed_fallback_art(self):
-        """Test themed fallback art generation."""
-        # Remove test mode to test actual implementation
-        if hasattr(self.app, '_test_mode'):
-            delattr(self.app, '_test_mode')
-            
-        # Set a theme in the config
-        self.app.config["theme"] = "simple"
-        result1 = self.app._generate_themed_fallback_art("simple")
-        self.assertEqual(result1, "[Album Art Unavailable]")
-        
-        # Test box theme
-        result2 = self.app._generate_themed_fallback_art("box")
-        self.assertTrue("╔" in result2)
-        self.assertTrue("╝" in result2)
-        
-        # Test minimal theme
-        result3 = self.app._generate_themed_fallback_art("minimal")
-        self.assertTrue("🎵" in result3)
 
 
 class TestBurning(unittest.TestCase):
