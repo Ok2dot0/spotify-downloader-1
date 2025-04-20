@@ -1,0 +1,16 @@
+{
+    "download_dir": "C:\\Users\\pppum\\Music\\SpotifyDownloads",
+    "dvd_drive": "F:",
+    "max_threads": 3,
+    "audio_format": "mp3",
+    "bitrate": "best",
+    "imgburn_path": "C:\\Program Files (x86)\\ImgBurn\\ImgBurn.exe",
+    "imgburn_settings": {
+        "volume_label": "SpotifyMusic",
+        "speed": "MAX",
+        "verify": true,
+        "eject": true,
+        "close_imgburn": true,
+        "filesystem": "ISO9660 + Joliet"
+    }
+}

@@ -1,63 +1,145 @@
-# Spotify Playlist Downloader
+# Spotify Album Downloader and Burner v2.0.0
 
-## Overview
+A powerful command-line and menu-driven application that lets you search for songs or albums on Spotify, display them with detailed information, download them using multithreaded performance, and burn them directly to CD/DVD using native Windows IMAPI2 COM interface.
 
-This application connects to your Spotify account, fetches all your playlists, and downloads them using `spotdl`. It organizes the downloaded tracks into folders that mirror the structure of your playlists on Spotify. The application also supports downloading personalized mixes and Spotify-generated playlists for your specific account. It ensures that the songs and folders are updated according to changes on Spotify. If a track is already downloaded and appears in more than one playlist, it will be copied instead of downloaded again. The application works on both Windows and Linux, using actual copies of files instead of symlinks. The settings are stored in a `settings.ini` file.
+![Spotify Downloader and Burner](https://img.shields.io/badge/Spotify-Downloader-1DB954?style=for-the-badge&logo=spotify&logoColor=white)
 
-## Features
+## 🌟 Features
 
-- Connects to your Spotify account using OAuth 2.0 authentication.
-- Fetches and organizes playlists and personalized mixes from Spotify.
-- Downloads tracks using the `spotdl` library.
-- Organizes downloaded tracks into folders that mirror the structure of your playlists on Spotify.
-- Checks if a track is already downloaded and copies it to other playlists instead of downloading it again.
-- Periodically updates the downloaded tracks and folders to reflect changes on Spotify.
-- Modern-looking terminal interface with clickable elements and interactive checkboxes.
-- Configurable settings stored in a `settings.ini` file.
+- 🔍 **Powerful Search**: Find tracks and albums on Spotify with ease
+- ⚡ **Multithreaded Downloads**: Download multiple tracks simultaneously for maximum speed
+- 💿 **Direct CD/DVD Burning**: Burn your music to disc using native Windows IMAPI2 interface
+- 🎵 **Multiple Audio Formats**: Choose from MP3, FLAC, OGG, and more
+- 📊 **Library Management**: Organize, play, and manage your downloaded music
+- ⚙️ **Advanced Settings**: Customize download location, audio quality, and more
+- 🎛️ **User-Friendly Interface**: Beautiful terminal interface using Rich and Colorama
 
-## Installation
+## 📋 Requirements
 
-1. Clone the repository:
-   ```sh
-   git clone https://github.com/githubnext/workspace-blank.git
-   cd workspace-blank
+- Python 3.6+
+- Windows OS for native CD/DVD burning (fallback options for other platforms)
+- Spotify Developer API credentials
+
+## 💻 Installation
+
+1. Clone this repository:
+```bash
+git clone https://github.com/yourusername/spotify-downloader.git
+cd spotify-downloader
+```
+
+2. Install required packages:
+```bash
+pip install -r requirements.txt
+```
+
+3. Set up your Spotify API credentials:
+   - Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/)
+   - Create a new application
+   - Get your Client ID and Client Secret
+   - Set these as environment variables or use `.env` file:
+   ```
+   SPOTIPY_CLIENT_ID=your_client_id
+   SPOTIPY_CLIENT_SECRET=your_client_secret
    ```
 
-2. Install the required dependencies:
-   ```sh
-   pip install -r requirements.txt
-   ```
+## 🚀 Usage
 
-3. Create a `settings.ini` file in the `config/` directory with the following content:
-   ```ini
-   [DEFAULT]
-   CLIENT_ID = your_spotify_client_id
-   CLIENT_SECRET = your_spotify_client_secret
-   REDIRECT_URI = http://127.0.0.1:8080
+### Menu-Driven Interface
 
-   [SETTINGS]
-   DOWNLOAD_LIKED = True
-   UPDATE_FREQUENCY = daily
-   DOWNLOAD_LOCATION = data/
-   ```
+Run the application without parameters to use the interactive menu:
 
-## Usage
+```bash
+python spotify_burner.py
+```
 
-1. Run the application:
-   ```sh
-   python src/interface.py
-   ```
+This will open the main menu with the following options:
+1. **Manage Existing Albums** - Play, burn or delete your downloaded albums
+2. **Search & Download** - Find and download new music from Spotify
+3. **Settings** - Configure download and burning options
+4. **About** - Information about the application
 
-2. Follow the instructions in the terminal interface to authenticate with your Spotify account and select the playlists and mixes to download.
+### Command-Line Usage
 
-3. The application will download the selected tracks and organize them into folders that mirror the structure of your playlists on Spotify.
+For direct command-line usage:
 
-4. The application will periodically update the downloaded tracks and folders based on changes on Spotify. You can also manually trigger an update through the terminal interface.
+```bash
+python spotify_burner.py "Album or track name"
+```
 
-## Contributing
+### Advanced Options
 
-Contributions are welcome! Please open an issue or submit a pull request with your changes.
+```
+usage: spotify_burner.py [-h] [-o OUTPUT] [--drive DRIVE] [-t THREADS] [--version] [--format {mp3,flac,ogg,m4a,opus,wav}] [--bitrate {128k,192k,256k,320k,best}] [query]
 
-## License
+Spotify Album Downloader and Burner - Search, download, and burn music from Spotify.
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+positional arguments:
+  query                 Song or album name to search for (optional)
+
+options:
+  -h, --help            show this help message and exit
+  -o OUTPUT, --output OUTPUT
+                        Custom output directory for downloads
+  --drive DRIVE         Specify CD/DVD drive letter (Windows only)
+  -t THREADS, --threads THREADS
+                        Maximum number of download threads (1-10)
+  --version             show program's version number and exit
+  --format {mp3,flac,ogg,m4a,opus,wav}
+                        Audio format for downloads
+  --bitrate {128k,192k,256k,320k,best}
+                        Audio bitrate for downloads
+```
+
+## 🔥 Key Features in Detail
+
+### Multithreaded Downloads
+
+The application uses Python's ThreadPoolExecutor to download multiple tracks at once:
+- Default: 3 concurrent downloads
+- Configurable: Up to 10 threads
+- Dynamic progress tracking for each download
+
+### Native CD/DVD Burning
+
+On Windows, the application uses the IMAPI2 COM interface for direct disc burning:
+- Auto-detection of optical drives
+- Volume naming
+- Support for CD-R, CD-RW, DVD±R, and DVD±RW
+- Fallback to Windows shell integration on systems without pywin32
+
+### Music Library Management
+
+Manage your downloaded music collection:
+- List all albums with track counts and sizes
+- Play albums using your default media player
+- Burn existing albums to disc
+- Delete unwanted albums
+
+### Configurable Settings
+
+Customize application behavior:
+- Download directory location
+- Optical drive selection
+- Audio format (MP3, FLAC, OGG, M4A, OPUS, WAV)
+- Bitrate quality (128k to 320k or "best")
+- Download thread count
+
+## 📝 Notes
+
+- This tool is for personal use only
+- Please respect copyright laws and terms of service
+- CD/DVD burning features work best on Windows with pywin32 installed
+
+## 🙏 Credits
+
+This application uses several excellent open-source projects:
+- [Spotipy](https://github.com/plamere/spotipy) - Lightweight Python client for Spotify API
+- [SpotDL](https://github.com/spotDL/spotify-downloader) - Download music from Spotify
+- [Rich](https://github.com/willmcgugan/rich) - Beautiful terminal formatting
+- [Colorama](https://github.com/tartley/colorama) - Cross-platform colored terminal output
+- [Python-dotenv](https://github.com/theskumar/python-dotenv) - Environment variable management
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

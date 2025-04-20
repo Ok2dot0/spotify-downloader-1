@@ -1,0 +1,20 @@
+2025-04-20 15:56:09,925 - spotify_burner - INFO - Spotify API connection successful
+2025-04-20 15:56:40,772 - spotify_burner - INFO - Configuration saved successfully.
+2025-04-20 15:58:56,565 - spotify_burner - INFO - Configuration saved successfully.
+2025-04-20 15:59:33,987 - spotify_burner - ERROR - Unexpected error: 'SpotifyBurner' object has no attribute 'search_music'
+2025-04-20 16:50:46,723 - spotify_burner - INFO - Spotify API connection successful
+2025-04-20 16:52:46,107 - spotify_burner - INFO - Found 1 albums in C:\Users\pppum\Music\SpotifyDownloads
+2025-04-20 18:00:24,559 - spotify_burner - INFO - Spotify API connection successful
+2025-04-20 18:01:20,281 - spotify_burner - INFO - Found optical drive (fallback): F:
+2025-04-20 18:01:24,745 - spotify_burner - INFO - Configuration saved successfully.
+2025-04-20 18:01:51,721 - spotify_burner - INFO - Configuration saved successfully.
+2025-04-20 18:02:01,708 - spotify_burner - INFO - Found 1 albums in C:\Users\pppum\Music\SpotifyDownloads
+2025-04-20 18:02:05,937 - spotify_burner - INFO - Starting ImgBurn process for C:\Users\pppum\Music\SpotifyDownloads\Arden Jones - age tape 0 to drive F:
+2025-04-20 18:08:30,673 - spotify_burner - INFO - Spotify API connection successful
+2025-04-20 18:08:32,298 - spotify_burner - INFO - Found 1 albums in C:\Users\pppum\Music\SpotifyDownloads
+2025-04-20 18:08:35,448 - spotify_burner - INFO - Starting ImgBurn process for C:\Users\pppum\Music\SpotifyDownloads\Arden Jones - age tape 0 to drive F:
+2025-04-20 18:14:12,250 - spotify_burner - WARNING - ImgBurn image creation returned non-zero code: 1
+2025-04-20 23:28:43,423 - spotify_burner - INFO - Spotify API connection successful
+2025-04-20 23:45:42,307 - spotify_burner - INFO - Spotify API connection successful
+2025-04-20 23:48:36,792 - spotify_burner - INFO - Spotify API connection successful
+2025-04-20 23:54:34,373 - spotify_burner - INFO - Spotify API connection successful

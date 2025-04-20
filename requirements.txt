@@ -1,6 +1,10 @@
-spotipy
-spotdl
-rich
-textual
-lyricsgenius
-mutagen
+spotipy>=2.19.0
+spotdl>=4.1.0
+colorama>=0.4.4
+rich>=12.0.0
+requests>=2.27.1
+Pillow>=9.0.0
+python-dotenv>=0.20.0
+pywin32>=305; platform_system=="Windows"
+concurrent-log-handler>=0.9.20
+tqdm>=4.64.0
