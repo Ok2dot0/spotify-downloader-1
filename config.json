@@ -4,13 +4,19 @@
     "max_threads": 3,
     "audio_format": "mp3",
     "bitrate": "best",
-    "imgburn_path": "C:\\Program Files (x86)\\ImgBurn\\ImgBurn.exe",
-    "imgburn_settings": {
-        "volume_label": "SpotifyMusic",
+    "theme": "dark",
+    "burn_method": "windows_native",
+    "burn_settings": {
+        "cdburnerxp_path": "C:\\Program Files\\CDBurnerXP\\cdbxpcmd.exe",
         "speed": "MAX",
         "verify": true,
         "eject": true,
-        "close_imgburn": true,
+        "volume_label": "SpotifyMusic",
         "filesystem": "ISO9660 + Joliet"
+    },
+    "metadata_settings": {
+        "save_album_art": true,
+        "embed_lyrics": false,
+        "overwrite_metadata": true
     }
 }

@@ -18,3 +18,112 @@
 2025-04-20 23:45:42,307 - spotify_burner - INFO - Spotify API connection successful
 2025-04-20 23:48:36,792 - spotify_burner - INFO - Spotify API connection successful
 2025-04-20 23:54:34,373 - spotify_burner - INFO - Spotify API connection successful
+2025-04-20 23:59:42,333 - spotify_burner - INFO - Spotify API connection successful
+2025-04-21 00:01:06,360 - spotify_burner - INFO - Spotify API connection successful
+2025-04-21 16:04:05,042 - spotify_burner - INFO - Applied theme: default
+2025-04-21 16:04:05,370 - spotify_burner - INFO - Spotify API connection successful
+2025-04-21 16:04:16,626 - spotify_burner - INFO - Applied theme: light
+2025-04-21 16:04:16,627 - spotify_burner - INFO - Configuration saved successfully.
+2025-04-21 16:04:27,443 - spotify_burner - INFO - Applied theme: dark
+2025-04-21 16:04:27,444 - spotify_burner - INFO - Configuration saved successfully.
+2025-04-21 16:04:36,589 - spotify_burner - INFO - Found 1 albums in C:\Users\pppum\Music\SpotifyDownloads
+2025-04-21 16:32:54,428 - spotify_burner - INFO - Applied theme: dark
+2025-04-21 16:32:54,658 - spotify_burner - INFO - Spotify API connection successful
+2025-04-21 16:33:29,006 - spotify_burner - INFO - Found 1 albums in C:\Users\pppum\Music\SpotifyDownloads
+2025-04-21 16:34:32,682 - spotify_burner - INFO - Applied theme: dark
+2025-04-21 16:34:32,841 - spotify_burner - INFO - Spotify API connection successful
+2025-04-21 16:34:34,396 - spotify_burner - INFO - Found 1 albums in C:\Users\pppum\Music\SpotifyDownloads
+2025-04-21 16:37:52,765 - spotify_burner - INFO - Applied theme: dark
+2025-04-21 16:37:52,952 - spotify_burner - INFO - Spotify API connection successful
+2025-04-21 16:38:03,420 - spotify_burner - INFO - Applied theme: dark
+2025-04-21 16:38:03,592 - spotify_burner - INFO - Spotify API connection successful
+2025-04-21 16:38:31,754 - spotify_burner - INFO - Applied theme: dark
+2025-04-21 16:38:31,936 - spotify_burner - INFO - Spotify API connection successful
+2025-04-21 16:38:41,351 - spotify_burner - INFO - Applied theme: dark
+2025-04-21 16:38:41,649 - spotify_burner - INFO - Spotify API connection successful
+2025-04-21 17:39:20,467 - spotify_burner - INFO - Applied theme: dark
+2025-04-21 17:39:20,767 - spotify_burner - INFO - Spotify API connection successful
+2025-04-21 17:39:24,120 - spotify_burner - ERROR - Unexpected error: 'SpotifyBurner' object has no attribute 'show_existing_albums'
+2025-04-21 19:56:56,255 - spotify_burner - INFO - Applied theme: dark
+2025-04-21 19:56:56,586 - spotify_burner - INFO - Spotify API connection successful
+2025-04-21 19:57:39,582 - spotify_burner - ERROR - Unexpected error: 'SpotifyBurner' object has no attribute 'search_and_download'
+2025-04-21 20:00:59,122 - spotify_burner - INFO - Applied theme: dark
+2025-04-21 20:00:59,749 - spotify_burner - INFO - Spotify API connection successful
+2025-04-21 20:02:34,769 - spotify_burner - INFO - Found 1 albums in C:\Users\pppum\Music\SpotifyDownloads
+2025-04-21 20:02:38,581 - spotify_burner - INFO - Starting automatic disc burning process for C:\Users\pppum\Music\SpotifyDownloads\Arden Jones - age tape 0
+2025-04-21 20:02:38,582 - spotify_burner - WARNING - Windows IMAPI2 components not available, searching for alternative methods
+2025-04-21 20:02:38,916 - spotify_burner - INFO - PowerShell available, attempting to use Windows built-in burning
+2025-04-21 20:02:39,650 - spotify_burner - INFO - Windows burn dialog triggered
+2025-04-21 20:03:38,837 - spotify_burner - INFO - Starting automatic disc burning process for C:\Users\pppum\Music\SpotifyDownloads\Arden Jones - age tape 0
+2025-04-21 20:03:38,837 - spotify_burner - WARNING - Windows IMAPI2 components not available, searching for alternative methods
+2025-04-21 20:03:39,089 - spotify_burner - INFO - PowerShell available, attempting to use Windows built-in burning
+2025-04-21 20:03:39,776 - spotify_burner - INFO - Windows burn dialog triggered
+2025-04-21 20:37:37,009 - spotify_burner - INFO - Applied theme: dark
+2025-04-21 20:37:37,236 - spotify_burner - INFO - Spotify API connection successful
+2025-04-21 20:37:41,569 - spotify_burner - INFO - Found 1 albums in C:\Users\pppum\Music\SpotifyDownloads
+2025-04-22 10:47:08,749 - spotify_burner - INFO - Applied theme: dark
+2025-04-22 10:47:09,297 - spotify_burner - INFO - Spotify API connection successful
+2025-04-22 10:47:11,329 - spotify_burner - INFO - Found 1 albums in C:\Users\pppum\Music\SpotifyDownloads
+2025-04-22 10:47:13,794 - spotify_burner - INFO - Starting automatic disc burning process for C:\Users\pppum\Music\SpotifyDownloads\Arden Jones - age tape 0
+2025-04-22 10:47:13,795 - spotify_burner - WARNING - Windows IMAPI2 components not available, searching for alternative methods
+2025-04-22 10:47:14,306 - spotify_burner - INFO - PowerShell available, attempting to use Windows built-in burning
+2025-04-22 10:47:14,308 - spotify_burner - INFO - Found optical drive (fallback): F:
+2025-04-22 10:47:14,319 - spotify_burner - INFO - Advanced Windows burn dialog process triggered
+2025-04-22 10:54:39,140 - spotify_burner - INFO - Applied theme: dark
+2025-04-22 10:54:39,288 - spotify_burner - INFO - Spotify API connection successful
+2025-04-22 10:54:41,170 - spotify_burner - INFO - Found 1 albums in C:\Users\pppum\Music\SpotifyDownloads
+2025-04-22 10:54:43,144 - spotify_burner - INFO - Starting automatic disc burning process for C:\Users\pppum\Music\SpotifyDownloads\Arden Jones - age tape 0
+2025-04-22 10:54:43,144 - spotify_burner - INFO - Found optical drive (fallback): F:
+2025-04-22 10:54:43,145 - spotify_burner - INFO - Executing burn script: powershell -ExecutionPolicy Bypass -File C:\Users\pppum\Code_Windows\afd\spotify-downloader-1\burn_disc.ps1 -SourceDir C:\Users\pppum\Music\SpotifyDownloads\Arden Jones - age tape 0 -DriveLetterOnly F -DiscLabel Arden Jones - ag
+2025-04-22 10:54:43,158 - spotify_burner - INFO - Burn script executed successfully
+2025-04-24 07:54:33,803 - spotify_burner - INFO - Applied theme: dark
+2025-04-24 07:54:34,050 - spotify_burner - INFO - Spotify API connection successful
+2025-04-24 07:54:41,694 - spotify_burner - INFO - Found 1 albums in C:\Users\pppum\Music\SpotifyDownloads
+2025-04-24 07:54:45,130 - spotify_burner - INFO - Starting automatic disc burning process for C:\Users\pppum\Music\SpotifyDownloads\Arden Jones - age tape 0
+2025-04-24 07:54:45,131 - spotify_burner - ERROR - Unexpected error: stat: path should be string, bytes, os.PathLike or integer, not NoneType
+2025-04-24 08:16:41,809 - spotify_burner - INFO - Applied theme: dark
+2025-04-24 08:16:41,967 - spotify_burner - INFO - Spotify API connection successful
+2025-04-24 08:16:43,443 - spotify_burner - INFO - Found 1 albums in C:\Users\pppum\Music\SpotifyDownloads
+2025-04-24 08:16:45,530 - spotify_burner - INFO - Starting automatic disc burning process for C:\Users\pppum\Music\SpotifyDownloads\Arden Jones - age tape 0
+2025-04-24 08:16:45,550 - spotify_burner - ERROR - Error detecting optical drives via IMAPI2: 'tuple' object is not callable
+2025-04-24 08:16:45,550 - spotify_burner - INFO - Found optical drive (fallback): F:
+2025-04-24 08:16:45,552 - spotify_burner - INFO - Executing CDBurnerXP command: C:\Program Files\CDBurnerXP\cdbxpcmd.exe /burn-data /device:F /folder:C:\Users\pppum\Music\SpotifyDownloads\Arden Jones - age tape 0 /name:Arden Jones - ag /speed:MAX /verify /eject /close
+2025-04-24 08:16:46,631 - spotify_burner - INFO - Burn completed successfully
+2025-04-24 08:19:17,378 - spotify_burner - INFO - Starting automatic disc burning process for C:\Users\pppum\Music\SpotifyDownloads\Arden Jones - age tape 0
+2025-04-24 08:19:17,381 - spotify_burner - ERROR - Error detecting optical drives via IMAPI2: 'tuple' object is not callable
+2025-04-24 08:19:17,382 - spotify_burner - INFO - Found optical drive (fallback): F:
+2025-04-24 08:19:17,382 - spotify_burner - INFO - Executing CDBurnerXP command: C:\Program Files\CDBurnerXP\cdbxpcmd.exe /burn-data /device:F /folder:C:\Users\pppum\Music\SpotifyDownloads\Arden Jones - age tape 0 /name:Arden Jones - ag /speed:MAX /verify /eject /close
+2025-04-24 08:19:28,358 - spotify_burner - INFO - Burn completed successfully
+2025-04-24 08:19:37,017 - spotify_burner - INFO - Starting automatic disc burning process for C:\Users\pppum\Music\SpotifyDownloads\Arden Jones - age tape 0
+2025-04-24 08:19:37,021 - spotify_burner - ERROR - Error detecting optical drives via IMAPI2: 'tuple' object is not callable
+2025-04-24 08:19:37,021 - spotify_burner - INFO - Found optical drive (fallback): F:
+2025-04-24 08:19:37,022 - spotify_burner - INFO - Executing CDBurnerXP command: C:\Program Files\CDBurnerXP\cdbxpcmd.exe /burn-data /device:F /folder:C:\Users\pppum\Music\SpotifyDownloads\Arden Jones - age tape 0 /name:Arden Jones - ag /speed:MAX /verify /eject /close
+2025-04-24 08:19:37,633 - spotify_burner - INFO - Burn completed successfully
+2025-04-24 08:20:06,705 - spotify_burner - INFO - Starting automatic disc burning process for C:\Users\pppum\Music\SpotifyDownloads\Arden Jones - age tape 0
+2025-04-24 08:20:06,710 - spotify_burner - ERROR - Error detecting optical drives via IMAPI2: 'tuple' object is not callable
+2025-04-24 08:20:06,711 - spotify_burner - INFO - Found optical drive (fallback): F:
+2025-04-24 08:20:06,711 - spotify_burner - INFO - Executing CDBurnerXP command: C:\Program Files\CDBurnerXP\cdbxpcmd.exe /burn-data /device:F /folder:C:\Users\pppum\Music\SpotifyDownloads\Arden Jones - age tape 0 /name:Arden Jones - ag /speed:MAX /verify /eject /close
+2025-04-24 08:20:07,637 - spotify_burner - INFO - Burn completed successfully
+2025-04-24 17:02:56,321 - spotify_burner - INFO - Applied theme: dark
+2025-04-24 17:02:56,651 - spotify_burner - INFO - Spotify API connection successful
+2025-04-24 17:07:47,174 - spotify_burner - INFO - Configuration saved successfully.
+2025-04-24 17:18:40,726 - spotify_burner - INFO - Applied theme: dark
+2025-04-24 17:18:40,903 - spotify_burner - INFO - Spotify API connection successful
+2025-04-24 17:37:08,279 - spotify_burner - INFO - Applied theme: dark
+2025-04-24 17:37:08,450 - spotify_burner - INFO - Spotify API connection successful
+2025-04-24 17:41:20,462 - spotify_burner - INFO - Applied theme: dark
+2025-04-24 17:41:20,642 - spotify_burner - INFO - Spotify API connection successful
+2025-04-24 17:44:45,629 - spotify_burner - INFO - Applied theme: dark
+2025-04-24 17:44:45,815 - spotify_burner - INFO - Spotify API connection successful
+2025-04-24 17:45:14,316 - spotify_burner - ERROR - Unexpected error: [WinError 32] Der Prozess kann nicht auf die Datei zugreifen, da sie von einem anderen Prozess verwendet wird: "C:\\Users\\pppum\\Music\\SpotifyDownloads\\Videos\\Well That's One Way To Build A Computer.webm"
+2025-04-24 17:55:23,975 - spotify_burner - INFO - Applied theme: dark
+2025-04-24 17:55:24,155 - spotify_burner - INFO - Spotify API connection successful
+2025-04-24 17:55:56,140 - spotify_burner - INFO - Configuration saved successfully.
+2025-04-24 17:56:28,106 - spotify_burner - INFO - Applied theme: dark
+2025-04-24 17:56:28,279 - spotify_burner - INFO - Spotify API connection successful
+2025-04-24 17:56:30,522 - spotify_burner - ERROR - Unexpected error: 'SpotifyBurner' object has no attribute 'about_app'
+2025-04-24 18:04:59,871 - spotify_burner - INFO - Applied theme: dark
+2025-04-24 18:05:00,299 - spotify_burner - INFO - Spotify API connection successful
+2025-04-24 18:05:10,818 - spotify_burner - INFO - Applied theme: light
+2025-04-24 18:05:17,691 - spotify_burner - INFO - Applied theme: dark
+2025-04-24 18:06:15,648 - spotify_burner - INFO - Configuration saved successfully.
