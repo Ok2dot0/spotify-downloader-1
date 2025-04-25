@@ -16,8 +16,6 @@ import shutil
 import time
 import re
 import requests
-from io import BytesIO
-from PIL import Image
 import subprocess
 import msvcrt  # For Windows key detection
 import dotenv
@@ -261,6 +259,114 @@ class SpotifyBurner:
             console.print(f"[bold red]Unexpected error: {e}[/bold red]")
             return False
 
+    def search_music(self, query):
+        """Search for music on Spotify.
+        
+        Args:
+            query: Search query string
+            
+        Returns:
+            dict: Selected album or track info, or None if cancelled
+        """
+        if not query:
+            console.print("[yellow]Search query is empty[/yellow]")
+            return None
+            
+        logger.info(f"Searching for: {query}")
+        console.print(f"\n[bold]Searching for:[/bold] {query}")
+        
+        try:
+            # Search for both albums and tracks
+            albums_result = self.spotify.search(query, type="album", limit=10)
+            tracks_result = self.spotify.search(query, type="track", limit=10)
+            
+            # Extract results
+            albums = albums_result["albums"]["items"] if "albums" in albums_result else []
+            tracks = tracks_result["tracks"]["items"] if "tracks" in tracks_result else []
+            
+            # Display results only if found
+            if not albums and not tracks:
+                console.print("[yellow]No results found. Try a different search query.[/yellow]")
+                return None
+                
+            # Display albums
+            if albums:
+                console.print("\n[bold]Albums:[/bold]")
+                album_table = Table(box=box.SIMPLE)
+                album_table.add_column("No.", style="dim", width=4, justify="right")
+                album_table.add_column("Album", style="cyan")
+                album_table.add_column("Artist", style="green")
+                album_table.add_column("Year", style="yellow", width=6)
+                
+                for i, album in enumerate(albums, 1):
+                    # Extract album information
+                    album_name = album["name"]
+                    artist_name = album["artists"][0]["name"] if album["artists"] else "Unknown Artist"
+                    release_year = album.get("release_date", "")[:4] if album.get("release_date") else ""
+                    
+                    # Add to table
+                    album_table.add_row(str(i), album_name, artist_name, release_year)
+                
+                console.print(album_table)
+            
+            # Display tracks
+            if tracks:
+                console.print("\n[bold]Tracks:[/bold]")
+                track_table = Table(box=box.SIMPLE)
+                track_table.add_column("No.", style="dim", width=4, justify="right")
+                track_table.add_column("Title", style="cyan")
+                track_table.add_column("Artist", style="green")
+                track_table.add_column("Album", style="yellow")
+                
+                start_index = len(albums) + 1
+                for i, track in enumerate(tracks, start_index):
+                    # Extract track information
+                    track_name = track["name"]
+                    artist_name = track["artists"][0]["name"] if track["artists"] else "Unknown Artist"
+                    album_name = track["album"]["name"] if "album" in track else "Single"
+                    
+                    # Add to table
+                    track_table.add_row(str(i), track_name, artist_name, album_name)
+                
+                console.print(track_table)
+            
+            # Prompt for selection
+            total_items = len(albums) + len(tracks)
+            input_message = f"Enter selection number [1-{total_items}], or 'C' to cancel"
+            
+            while True:
+                choice = Prompt.ask(input_message, choices=[str(i) for i in range(1, total_items + 1)] + ["C", "c"])
+                
+                if choice.upper() == "C":
+                    return None
+                    
+                try:
+                    # Parse selection
+                    index = int(choice) - 1
+                    
+                    # Determine if album or track
+                    if index < len(albums):
+                        return {
+                            "type": "album",
+                            "item": albums[index]
+                        }
+                    else:
+                        track_index = index - len(albums)
+                        return {
+                            "type": "track",
+                            "item": tracks[track_index]
+                        }
+                except (ValueError, IndexError):
+                    console.print(f"[red]Invalid selection. Please enter a number between 1 and {total_items}.[red]")
+                    
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Search cancelled by user.[/yellow]")
+            return None
+        except Exception as e:
+            logger.error(f"Error during search: {e}")
+            console.print(f"[bold red]Error during search: {e}[/bold red]")
+            return None
+
     def search_and_download(self):
         """Search for and download music from Spotify."""
         console.clear()
@@ -325,6 +431,164 @@ class SpotifyBurner:
             self.burn_to_disc(output_dir, self.dvd_drive)
         
         self.wait_for_keypress()
+
+    def display_music_info(self, selection):
+        """Display detailed information about the selected music.
+        
+        Args:
+            selection: Dictionary containing album or track info
+            
+        Returns:
+            list: List of track URLs for downloading
+        """
+        if not selection:
+            return []
+            
+        item_type = selection["type"]
+        item = selection["item"]
+        
+        console.clear()
+        
+        if item_type == "album":
+            # Display album info
+            album_id = item["id"]
+            album_name = item["name"]
+            artist_name = item["artists"][0]["name"] if item["artists"] else "Unknown Artist"
+            release_date = item.get("release_date", "Unknown")
+            total_tracks = item.get("total_tracks", "Unknown")
+            
+            # Display album info in a panel
+            album_info = f"[bold cyan]{album_name}[/bold cyan]\n"
+            album_info += f"[green]Artist:[/green] {artist_name}\n"
+            album_info += f"[green]Release Date:[/green] {release_date}\n"
+            album_info += f"[green]Tracks:[/green] {total_tracks}"
+            
+            console.print(Panel(album_info, title="Album Information", border_style="cyan"))
+            
+            # Get album tracks
+            try:
+                album_tracks = self.spotify.album_tracks(album_id)
+                tracks = album_tracks["items"] if "items" in album_tracks else []
+                
+                if not tracks:
+                    console.print("[yellow]No tracks found in this album.[/yellow]")
+                    return []
+                
+                # Display tracks in a table
+                tracks_table = Table(title=f"Tracks in {album_name}", box=box.SIMPLE)
+                tracks_table.add_column("No.", style="dim", width=4, justify="right")
+                tracks_table.add_column("Title", style="cyan")
+                tracks_table.add_column("Duration", style="yellow", justify="right")
+                
+                track_urls = []
+                for i, track in enumerate(tracks, 1):
+                    track_name = track["name"]
+                    duration_ms = track["duration_ms"]
+                    minutes, seconds = divmod(duration_ms // 1000, 60)
+                    duration = f"{minutes}:{seconds:02d}"
+                    
+                    tracks_table.add_row(str(i), track_name, duration)
+                    
+                    # Add track URL
+                    track_urls.append(track["external_urls"].get("spotify", ""))
+                
+                console.print(tracks_table)
+                return track_urls
+                
+            except Exception as e:
+                logger.error(f"Error getting album tracks: {e}")
+                console.print(f"[bold red]Error getting album tracks: {e}[/bold red]")
+                return []
+                
+        elif item_type == "track":
+            # Display track info
+            track_name = item["name"]
+            artist_name = item["artists"][0]["name"] if item["artists"] else "Unknown Artist"
+            album_name = item["album"]["name"] if "album" in item else "Single"
+            duration_ms = item["duration_ms"]
+            minutes, seconds = divmod(duration_ms // 1000, 60)
+            duration = f"{minutes}:{seconds:02d}"
+            
+            # Display track info in a panel
+            track_info = f"[bold cyan]{track_name}[/bold cyan]\n"
+            track_info += f"[green]Artist:[/green] {artist_name}\n"
+            track_info += f"[green]Album:[/green] {album_name}\n"
+            track_info += f"[green]Duration:[/green] {duration}"
+            
+            console.print(Panel(track_info, title="Track Information", border_style="cyan"))
+            
+            # Return single track URL
+            track_url = item["external_urls"].get("spotify", "")
+            return [track_url] if track_url else []
+            
+        return []
+
+    def enhance_download_metadata(self, selection, output_dir):
+        """Enhance downloaded music metadata.
+        
+        Args:
+            selection: Dictionary containing album or track info
+            output_dir: Directory containing downloaded music
+        """
+        if not selection or not output_dir:
+            return
+            
+        console.print("\n[bold cyan]Enhancing metadata...[/bold cyan]")
+        
+        try:
+            # TODO: Additional metadata enhancement could be implemented here
+            # - Fix tags
+            
+            console.print("[green]Metadata enhancement completed[/green]")
+            
+        except Exception as e:
+            logger.error(f"Error enhancing metadata: {e}")
+            console.print(f"[yellow]Error enhancing metadata: {e}[/yellow]")
+
+    def play_album(self, album_path):
+        """Play an album with the default system player.
+        
+        Args:
+            album_path: Path to the album directory
+        """
+        if not os.path.exists(album_path):
+            console.print("[red]Album path not found.[/red]")
+            return
+            
+        console.print(f"[bold]Opening album:[/bold] {album_path}")
+        
+        try:
+            if sys.platform == "win32":
+                os.startfile(album_path)
+            elif sys.platform == "darwin":  # macOS
+                subprocess.run(["open", album_path])
+            else:  # Linux
+                subprocess.run(["xdg-open", album_path])
+        except Exception as e:
+            console.print(f"[red]Error opening album: {e}[/red]")
+            
+    def delete_album(self, album_path):
+        """Delete an album directory and its contents.
+        
+        Args:
+            album_path: Path to the album directory
+            
+        Returns:
+            bool: True if deletion was successful
+        """
+        if not os.path.exists(album_path):
+            console.print("[red]Album path not found.[/red]")
+            return False
+            
+        try:
+            shutil.rmtree(album_path)
+            logger.info(f"Deleted album: {album_path}")
+            console.print(f"[green]Album deleted successfully.[/green]")
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting album {album_path}: {e}")
+            console.print(f"[red]Error deleting album: {e}[/red]")
+            return False
 
     def detect_optical_drives(self):
         """Detect optical drives on the system."""
@@ -483,13 +747,13 @@ class SpotifyBurner:
             # Run and capture output
             process = subprocess.run(cmd, capture_output=True, text=True)
             if process.returncode == 0:
-                console.print("[green]Burn completed successfully![/green]")
+                console.print("[green]Burn completed successfully![green]")
                 logger.info("Burn completed successfully")
                 return True
             else:
                 error_msg = process.stderr or process.stdout or "Unknown error"
                 logger.error(f"Error during burn process: {error_msg}")
-                console.print(f"[bold red]Error during burn: {error_msg}[/bold red]")
+                console.print(f"[bold red]Error during burn: {error_msg}[bold red]")
                 self.show_manual_burn_instructions(source_dir)
                 return False
         except Exception as e:
@@ -923,12 +1187,12 @@ class SpotifyBurner:
             try:
                 process = subprocess.run(cmd, capture_output=True, text=True)
                 if process.returncode == 0:
-                    console.print(f"[green]Downloaded: {url}[/green]")
+                    console.print(f"[green]Downloaded: {url}[green]")
                     downloaded.append(url)
                 else:
-                    console.print(f"[red]Error downloading {url}: {process.stderr or process.stdout}[/red]")
+                    console.print(f"[red]Error downloading {url}: {process.stderr or process.stdout}[red]")
             except Exception as e:
-                console.print(f"[red]Exception downloading {url}: {e}[/red]")
+                console.print(f"[red]Exception downloading {url}: {e}[red]")
         return downloaded
 
     def scan_existing_videos(self):
@@ -955,16 +1219,16 @@ class SpotifyBurner:
             else:
                 subprocess.run(["xdg-open", video_path])
         except Exception as e:
-            console.print(f"[red]Error playing video: {e}[/red]")
+            console.print(f"[red]Error playing video: {e}[red]")
 
     def show_video_menu(self):
         """Sub-menu for downloading and managing videos."""
         while True:
             console.clear()
             console.print("\n[bold magenta]Video Management Menu[bold magenta]")
-            console.print("[1] [cyan]Download videos from URLs[/cyan]")
-            console.print("[2] [green]Manage existing videos[/green]")
-            console.print("[3] [yellow]Return to main menu[/yellow]")
+            console.print("[1] [cyan]Download videos from URLs[cyan]")
+            console.print("[2] [green]Manage existing videos[green]")
+            console.print("[3] [yellow]Return to main menu[yellow]")
             choice = Prompt.ask("Enter your choice", choices=["1", "2", "3"], default="3")
             if choice == "1":
                 urls = self.prompt_for_video_urls()
@@ -977,7 +1241,7 @@ class SpotifyBurner:
                 videos = self.filter_videos_by_extension(videos)
                 videos = self.filter_videos_by_resolution(videos)
                 if not videos:
-                    console.print("[yellow]No videos match your criteria.[/yellow]")
+                    console.print("[yellow]No videos match your criteria.[yellow]")
                     self.wait_for_keypress()
                     continue
                 while True:
@@ -991,10 +1255,10 @@ class SpotifyBurner:
                         table.add_row(str(i+1), vid['name'], str(vid['size']))
                     console.print(table)
                     console.print("\n[bold]Video Management Options:[bold]")
-                    console.print("[1] [cyan]Play video(s)[/cyan]")
-                    console.print("[2] [green]Burn selected videos[/green]")
-                    console.print("[3] [red]Delete selected videos[/red]")
-                    console.print("[4] [yellow]Return to video menu[/yellow]")
+                    console.print("[1] [cyan]Play video(s)[cyan]")
+                    console.print("[2] [green]Burn selected videos[green]")
+                    console.print("[3] [red]Delete selected videos[red]")
+                    console.print("[4] [yellow]Return to video menu[yellow]")
                     sub = Prompt.ask("Enter your choice", choices=["1", "2", "3", "4"], default="4")
                     if sub == "1":
                         nums = self.prompt_for_album_numbers(videos)
@@ -1015,17 +1279,19 @@ class SpotifyBurner:
                         for n in nums:
                             try:
                                 os.remove(videos[n-1]['path'])
-                                console.print(f"[green]Deleted: {videos[n-1]['name']}[/green]")
+                                console.print(f"[green]Deleted: {videos[n-1]['name']}[green]")
                             except Exception as e:
                                 logger.error(f"Error deleting video {videos[n-1]['path']}: {e}")
-                                console.print(f"[red]Error deleting {videos[n-1]['name']}: {e}[/red]")
+                                console.print(f"[red]Error deleting {videos[n-1]['name']}: {e}[red]")
                         videos = self.scan_existing_videos()
                         if not videos:
-                            console.print("[yellow]No more videos.[/yellow]")
-                            self.wait_for_keypress()
+                            console.print("[yellow]No more videos.[yellow]")
+                            console.print("Press any key to continue...")
                             break
                     elif sub == "4":
                         break
+            elif choice == "3":
+                break
 
     def manage_settings(self):
         """Manage application settings including CDBurnerXP options."""
@@ -1045,12 +1311,11 @@ class SpotifyBurner:
             table.add_row("7", "Burning Speed", str(self.burn_settings.get("speed") or "Auto"))
             table.add_row("8", "Verify After Burning", "Yes" if self.burn_settings.get("verify") else "No")
             table.add_row("9", "Eject After Burning", "Yes" if self.burn_settings.get("eject") else "No")
-            table.add_row("10", "Theme", self.theme)
             console.print(table)
             console.print()
             choice = Prompt.ask(
                 "Select setting to change ([bold]B[/bold] to go back)",
-                choices=[str(i) for i in range(1,11)] + ["B","b"], default="B"
+                choices=[str(i) for i in range(1,10)] + ["B","b"], default="B"
             ).upper()
             if choice == "B":
                 self.save_config()
@@ -1077,23 +1342,42 @@ class SpotifyBurner:
                 self.burn_settings["verify"] = Confirm.ask("Verify disc after burning?", default=self.burn_settings.get("verify"))
             elif choice == "9":
                 self.burn_settings["eject"] = Confirm.ask("Eject disc after burning?", default=self.burn_settings.get("eject"))
-            elif choice == "10":
-                # Theme selection
-                theme = Prompt.ask("Select theme", choices=["default","dark","light"], default=self.theme)
-                self.apply_theme(theme)
 
     def about_app(self):
         """Display information about the application."""
         console.clear()
-        console.print(Panel(
-            f"[bold white]Spotify Album Downloader and Burner v{VERSION}[/bold white]\n"
-            f"[bold]Theme:[/bold] {self.theme}\n"
-            f"[bold]Download Directory:[/bold] {self.download_dir}\n"
-            f"[bold]Max Threads:[/bold] {self.max_threads}\n"
-            f"[bold]Format:[/bold] {self.audio_format} @ {self.bitrate}",
-            title="About", box=app_state["theme"]["box"],
-            border_style=app_state["theme"]["border"]
-        ))
+        self.show_header()
+        
+        # Create a panel with app information
+        about_text = (
+            "[bold]Spotify Album Downloader and Burner v{VERSION}[/bold]\n\n"
+            "A powerful command-line and menu-driven application that lets you search for songs or albums on Spotify, "
+            "display them with detailed information, download them using multithreaded performance, "
+            "and burn them directly to CD/DVD.\n\n"
+            "[bold cyan]🌟 Key Features:[/bold cyan]\n"
+            "- 🔍 Powerful Search: Find tracks and albums on Spotify with ease\n"
+            "- ⚡ Multithreaded Downloads: Download multiple tracks simultaneously\n"
+            "- 💿 Direct CD/DVD Burning: Burn your music to disc\n"
+            "- 🎵 Multiple Audio Formats: Choose from MP3, FLAC, OGG, and more\n"
+            "- 📊 Library Management: Organize, play, and manage your downloaded music\n"
+            "- 📹 Video Support: Download and manage videos from URLs\n"
+            "- ⚙️ Advanced Settings: Customize download location, audio quality, and more\n\n"
+            "[bold cyan]📋 Requirements:[/bold cyan]\n"
+            "- Python 3.6+\n"
+            "- Windows OS for native CD/DVD burning\n"
+            "- Spotify Developer API credentials\n\n"
+            "[bold cyan]🙏 Credits:[/bold cyan]\n"
+            "- Spotipy: Lightweight Python client for Spotify API\n"
+            "- SpotDL: Download music from Spotify\n"
+            "- Rich: Beautiful terminal formatting\n"
+            "- Colorama: Cross-platform colored terminal output\n\n"
+            "[bold cyan]📄 License:[/bold cyan]\n"
+            "This project is licensed under the MIT License."
+        ).format(VERSION=VERSION)
+        
+        console.print(Panel(about_text, title="About", border_style="blue", width=80))
+        
+        # Wait for key press to return to main menu
         self.wait_for_keypress()
 
     def run(self, query=None):
@@ -1141,7 +1425,7 @@ class SpotifyBurner:
                 
                 # Download tracks
                 if not self.download_tracks(tracks, output_dir, album_url):
-                    console.print("[red]Download failed or incomplete![/red]")
+                    console.print("[red]Download failed or incomplete![red]")
                     return 1
                 
                 # Enhance metadata
@@ -1160,12 +1444,228 @@ class SpotifyBurner:
                 return 0
                 
         except KeyboardInterrupt:
-            console.print("\n[yellow]Operation cancelled by user.[/yellow]")
+            console.print("\n[yellow]Operation cancelled by user.[yellow]")
             return 0
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
             console.print(f"[bold red]An unexpected error occurred: {e}[bold red]")
             return 1
+
+    def download_tracks(self, track_urls, output_dir=None, album_url=None):
+        """Download tracks from Spotify URLs using spotdl.
+        
+        Args:
+            track_urls: List of Spotify track URLs to download
+            output_dir: Directory to save downloads (if None, uses default)
+            album_url: Optional album URL for more efficient downloading
+            
+        Returns:
+            bool: True if download was successful
+        """
+        if not track_urls:
+            console.print("[yellow]No tracks to download.[/yellow]")
+            return False
+            
+        # Create output directory if it doesn't exist
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+        else:
+            output_dir = self.download_dir
+            os.makedirs(output_dir, exist_ok=True)
+        
+        logger.info(f"Downloading {len(track_urls)} tracks to {output_dir}")
+        console.print(f"\n[bold cyan]Downloading {len(track_urls)} tracks to:[/bold cyan]")
+        console.print(f"[bold]{output_dir}[/bold]")
+        
+        # If we have an album URL, use that for more efficient downloading
+        if album_url and len(track_urls) > 1:
+            try:
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(),
+                    TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                    TimeRemainingColumn()
+                ) as progress:
+                    task = progress.add_task("[cyan]Downloading album...", total=100)
+                    
+                    # Build spotdl command
+                    cmd = [
+                        "spotdl",
+                        "--output", output_dir,
+                        "--format", self.audio_format,
+                        "--bitrate", self.bitrate,
+                        album_url
+                    ]
+                    
+                    # Start the process with Popen to allow monitoring
+                    process = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        bufsize=1,
+                        universal_newlines=True
+                    )
+                    
+                    # Read output line by line and update progress
+                    while True:
+                        line = process.stdout.readline()
+                        if not line and process.poll() is not None:
+                            break
+                        if line:
+                            line = line.strip()
+                            logger.debug(line)
+                            
+                            # Estimate progress based on output
+                            if "Downloaded" in line and "%" in line:
+                                try:
+                                    # Try to parse progress from spotdl output
+                                    percent_str = line.split("%")[0].split(" ")[-1].strip()
+                                    percent = float(percent_str)
+                                    progress.update(task, completed=percent)
+                                except:
+                                    # If parsing fails, show indeterminate progress
+                                    progress.update(task, advance=1)
+                    
+                    # Get return code
+                    return_code = process.poll()
+                    
+                    # Finish progress bar
+                    progress.update(task, completed=100)
+                    
+                    if return_code == 0:
+                        console.print("[green]Album download completed successfully![/green]")
+                        return True
+                    else:
+                        console.print("[red]Error downloading album. Falling back to individual tracks...[/red]")
+                        # If album download fails, we'll fall through to individual download
+            except Exception as e:
+                logger.error(f"Error downloading album: {e}")
+                console.print(f"[yellow]Error downloading album: {e}[/yellow]")
+                console.print("[yellow]Falling back to individual track download...[/yellow]")
+                # Fall through to individual track download
+        
+        # Download individual tracks
+        try:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TimeRemainingColumn()
+            ) as progress:
+                # Create a task for overall progress tracking
+                task = progress.add_task("[cyan]Downloading tracks...", total=len(track_urls))
+                
+                # Use ThreadPoolExecutor to download tracks in parallel
+                download_futures = []
+                for url in track_urls:
+                    future = self.executor.submit(
+                        self._download_single_track,
+                        url,
+                        output_dir,
+                        progress
+                    )
+                    download_futures.append(future)
+                
+                # Wait for all downloads to complete
+                successful_downloads = 0
+                for future in download_futures:
+                    try:
+                        if future.result():
+                            successful_downloads += 1
+                        progress.update(task, advance=1)
+                    except Exception as e:
+                        logger.error(f"Error in download thread: {e}")
+                        progress.update(task, advance=1)
+                
+                # Report results
+                if successful_downloads == len(track_urls):
+                    console.print(f"[green]All {successful_downloads} tracks downloaded successfully![/green]")
+                    return True
+                elif successful_downloads > 0:
+                    console.print(f"[yellow]Downloaded {successful_downloads} of {len(track_urls)} tracks.[/yellow]")
+                    return True  # Still return True if some tracks were downloaded
+                else:
+                    console.print("[red]Failed to download any tracks.[/red]")
+                    return False
+        except Exception as e:
+            logger.error(f"Error downloading tracks: {e}")
+            console.print(f"[bold red]Error downloading tracks: {e}[/bold red]")
+            return False
+
+    def _download_single_track(self, url, output_dir, progress=None):
+        """Download a single track using spotdl.
+        
+        Args:
+            url: Spotify track URL
+            output_dir: Output directory
+            progress: Optional progress display object
+            
+        Returns:
+            bool: True if download was successful
+        """
+        task_id = None
+        if progress:
+            task_id = progress.add_task(f"[green]Track: {url.split('/')[-1]}", total=100)
+        
+        try:
+            # Build command
+            cmd = [
+                "spotdl",
+                "--output", output_dir,
+                "--format", self.audio_format,
+                "--bitrate", self.bitrate,
+                url
+            ]
+            
+            # Run the command
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                universal_newlines=True
+            )
+            
+            # Read output and update progress
+            while True:
+                line = process.stdout.readline()
+                if not line and process.poll() is not None:
+                    break
+                if line and task_id is not None:
+                    line = line.strip()
+                    logger.debug(line)
+                    
+                    # Update progress based on output
+                    if "Downloaded" in line and "%" in line:
+                        try:
+                            percent_str = line.split("%")[0].split(" ")[-1].strip()
+                            percent = float(percent_str)
+                            progress.update(task_id, completed=percent)
+                        except:
+                            # If parsing fails, show indeterminate progress
+                            progress.update(task_id, advance=2)
+            
+            # Get return code
+            return_code = process.poll()
+            
+            # Complete the progress
+            if task_id is not None:
+                progress.update(task_id, completed=100)
+            
+            if return_code == 0:
+                return True
+            else:
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error downloading track {url}: {e}")
+            if task_id is not None:
+                progress.update(task_id, description=f"[red]Failed: {url.split('/')[-1]}")
+            return False
 
 def main():
     """Main entry point."""

@@ -1,10 +1,24 @@
-spotipy>=2.19.0
-spotdl>=4.1.0
-colorama>=0.4.4
-rich>=12.0.0
-requests>=2.27.1
-Pillow>=9.0.0
-python-dotenv>=0.20.0
+# Production dependencies
+spotipy==2.23.0
+spotdl==4.2.1
+colorama==0.4.6
+rich==13.5.2
+requests==2.31.0
+Pillow==10.0.1
+python-dotenv==1.0.0
+tqdm==4.66.1
+concurrent-log-handler==0.9.24
+yt-dlp==2023.7.6  # Required for video downloads
+
+# Windows-specific dependencies
 pywin32>=305; platform_system=="Windows"
-concurrent-log-handler>=0.9.20
-tqdm>=4.64.0
+comtypes>=1.2.0; platform_system=="Windows"
+
+# Development dependencies
+pytest==7.4.0
+pytest-cov==4.1.0
+pytest-mock==3.11.1
+pytest-timeout==2.1.0
+black==23.7.0
+isort==5.12.0
+flake8==6.1.0

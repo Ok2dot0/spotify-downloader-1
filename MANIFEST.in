@@ -1,0 +1,10 @@
+include LICENSE
+include README.md
+include CONTRIBUTING.md
+include CODE_OF_CONDUCT.md
+include requirements.txt
+include .env.sample
+include .flake8
+include pyproject.toml
+include pytest.ini
+recursive-include tests *.py

@@ -127,3 +127,101 @@
 2025-04-24 18:05:10,818 - spotify_burner - INFO - Applied theme: light
 2025-04-24 18:05:17,691 - spotify_burner - INFO - Applied theme: dark
 2025-04-24 18:06:15,648 - spotify_burner - INFO - Configuration saved successfully.
+2025-04-24 21:11:50,217 - spotify_burner - INFO - Applied theme: dark
+2025-04-24 21:11:50,522 - spotify_burner - INFO - Spotify API connection successful
+2025-04-24 21:13:16,727 - spotify_burner - ERROR - Unexpected error: 'SpotifyBurner' object has no attribute 'search_music'
+2025-04-24 21:13:51,463 - spotify_burner - INFO - Applied theme: dark
+2025-04-24 21:13:51,674 - spotify_burner - INFO - Spotify API connection successful
+2025-04-24 21:14:02,476 - spotify_burner - INFO - Found 1 albums in C:\Users\pppum\Music\SpotifyDownloads
+2025-04-24 21:14:18,544 - spotify_burner - ERROR - Unexpected error: 'SpotifyBurner' object has no attribute 'about_app'
+2025-04-24 23:33:31,096 - spotify_burner - INFO - Applied theme: dark
+2025-04-24 23:33:31,136 - spotify_burner - ERROR - Unexpected error connecting to Spotify API: HTTPSConnectionPool(host='accounts.spotify.com', port=443): Max retries exceeded with url: /api/token (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x000001A7D31DE350>: Failed to resolve 'accounts.spotify.com' ([Errno 11001] getaddrinfo failed)"))
+2025-04-24 23:33:42,432 - spotify_burner - INFO - Applied theme: dark
+2025-04-24 23:33:42,447 - spotify_burner - ERROR - Unexpected error connecting to Spotify API: HTTPSConnectionPool(host='accounts.spotify.com', port=443): Max retries exceeded with url: /api/token (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x00000194AABBB090>: Failed to resolve 'accounts.spotify.com' ([Errno 11001] getaddrinfo failed)"))
+2025-04-25 13:50:07,841 - spotify_burner - INFO - Applied theme: dark
+2025-04-25 13:50:08,143 - spotify_burner - INFO - Spotify API connection successful
+2025-04-25 13:50:32,696 - spotify_burner - ERROR - Unexpected error: 'SpotifyBurner' object has no attribute 'search_music'
+2025-04-25 13:50:35,357 - spotify_burner - INFO - Applied theme: dark
+2025-04-25 13:50:35,489 - spotify_burner - INFO - Spotify API connection successful
+2025-04-25 13:50:37,684 - spotify_burner - INFO - Found 1 albums in C:\Users\pppum\Music\SpotifyDownloads
+2025-04-25 13:51:34,128 - spotify_burner - ERROR - Unexpected error: 'SpotifyBurner' object has no attribute 'about_app'
+2025-04-25 18:13:35,439 - spotify_burner - INFO - Applied theme: dark
+2025-04-25 18:13:35,724 - spotify_burner - INFO - Spotify API connection successful
+2025-04-25 18:13:42,220 - spotify_burner - INFO - Searching for: age tape
+2025-04-25 18:14:28,710 - spotify_burner - INFO - Executing spotdl command: spotdl --output C:\Users\pppum\Music\SpotifyDownloads\Arden Jones - age tape 1 --format mp3 --bitrate best --threads 3 https://open.spotify.com/album/3o4JOV2P8fueS8vdkaivbO
+2025-04-25 18:14:35,743 - spotify_burner - ERROR - Error during download: usage: spotdl [-h]
+              [--audio [{youtube,youtube-music,soundcloud,bandcamp,piped} ...]]
+              [--lyrics [{genius,musixmatch,azlyrics,synced} ...]]
+              [--genius-access-token GENIUS_TOKEN] [--config]
+              [--search-query SEARCH_QUERY] [--dont-filter-results]
+              [--album-type {album,single}] [--only-verified-results]
+              [--user-auth] [--client-id CLIENT_ID]
+              [--client-secret CLIENT_SECRET] [--auth-token AUTH_TOKEN]
+              [--cache-path CACHE_PATH] [--no-cache]
+              [--max-retries MAX_RETRIES] [--headless] [--use-cache-file]
+              [--ffmpeg FFMPEG] [--threads THREADS]
+              [--bitrate {auto,disable,8k,16k,24k,32k,40k,48k,64k,80k,96k,112k,128k,160k,192k,224k,256k,320k,0,1,2,3,4,5,6,7,8,9}]
+              [--ffmpeg-args FFMPEG_ARGS]
+              [--format {mp3,flac,ogg,opus,m4a,wav}] [--save-file SAVE_FILE]
+              [--preload] [--output OUTPUT] [--m3u [M3U]]
+              [--cookie-file COOKIE_FILE] [--overwrite {skip,metadata,force}]
+              [--restrict [{ascii,none,strict}]] [--print-errors]
+              [--save-errors SAVE_ERRORS] [--sponsor-block]
+              [--archive ARCHIVE] [--playlist-numbering]
+              [--playlist-retain-track-cover] [--scan-for-songs]
+              [--fetch-albums] [--id3-separator ID3_SEPARATOR] [--ytm-data]
+              [--add-unavailable] [--generate-lrc] [--force-update-metadata]
+              [--sync-without-deleting]
+              [--max-filename-length MAX_FILENAME_LENGTH]
+              [--yt-dlp-args YT_DLP_ARGS]
+              [--detect-formats [{mp3,flac,ogg,opus,m4a,wav} ...]]
+              [--redownload] [--skip-album-art]
+              [--ignore-albums [IGNORE_ALBUMS ...]] [--skip-explicit]
+              [--proxy PROXY] [--create-skip-file] [--respect-skip-file]
+              [--sync-remove-lrc] [--host HOST] [--port PORT] [--keep-alive]
+              [--allowed-origins [ALLOWED_ORIGINS ...]] [--web-use-output-dir]
+              [--keep-sessions] [--force-update-gui]
+              [--web-gui-repo WEB_GUI_REPO]
+              [--web-gui-location WEB_GUI_LOCATION] [--enable-tls]
+              [--cert-file CERT_FILE] [--key-file KEY_FILE]
+              [--ca-file CA_FILE]
+              [--log-level {CRITICAL,FATAL,ERROR,WARN,WARNING,INFO,MATCH,DEBUG,NOTSET}]
+              [--simple-tui] [--log-format LOG_FORMAT] [--download-ffmpeg]
+              [--generate-config] [--check-for-updates] [--profile]
+              [--version]
+              [{download,save,web,sync,meta,url}] query [query ...]
+spotdl: error: argument --bitrate: invalid choice: 'best' (choose from 'auto', 'disable', '8k', '16k', '24k', '32k', '40k', '48k', '64k', '80k', '96k', '112k', '128k', '160k', '192k', '224k', '256k', '320k', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9')
+
+2025-04-25 18:20:47,487 - spotify_burner - INFO - Applied theme: dark
+2025-04-25 18:20:47,658 - spotify_burner - INFO - Spotify API connection successful
+2025-04-25 18:22:41,505 - spotify_burner - INFO - Searching for: Arcane League of Legends: Season 2 (Soundtrack from the Animated Series)
+2025-04-25 18:40:41,303 - spotify_burner - INFO - Applied theme: dark
+2025-04-25 18:40:41,564 - spotify_burner - INFO - Spotify API connection successful
+2025-04-25 18:40:49,403 - spotify_burner - INFO - Searching for: Arcane League of Legends: Season 2 (Soundtrack from the Animated Series)
+2025-04-25 18:40:51,483 - spotify_burner - ERROR - Unexpected error: closing tag '[/rgb]' at position 15 doesn't match any open tag
+2025-04-25 18:46:16,533 - spotify_burner - INFO - Applied theme: dark
+2025-04-25 18:46:16,782 - spotify_burner - INFO - Spotify API connection successful
+2025-04-25 18:46:25,211 - spotify_burner - INFO - Searching for: Arcane League of Legends: Season 2 (Soundtrack from the Animated Series)
+2025-04-25 18:55:27,506 - spotify_burner - INFO - Applied theme: dark
+2025-04-25 18:55:27,816 - spotify_burner - INFO - Spotify API connection successful
+2025-04-25 18:55:40,571 - spotify_burner - INFO - Searching for: Arcane League of Legends: Season 2 (Soundtrack from the Animated Series)
+2025-04-25 19:05:54,003 - spotify_burner - INFO - Applied theme: dark
+2025-04-25 19:05:54,005 - spotify_burner - ERROR - Unexpected error: closing tag '[/cyan]' at position 221 doesn't match any open tag
+2025-04-25 19:08:56,888 - spotify_burner - INFO - Applied theme: dark
+2025-04-25 19:08:57,234 - spotify_burner - INFO - Spotify API connection successful
+2025-04-25 19:09:09,306 - spotify_burner - INFO - Searching for: Arcane League of Legends: Season 2 (Soundtrack from the Animated Series)
+2025-04-25 19:09:38,229 - spotify_burner - INFO - Applied theme: dark
+2025-04-25 19:09:38,433 - spotify_burner - INFO - Spotify API connection successful
+2025-04-25 19:29:57,119 - spotify_burner - INFO - Applied theme: dark
+2025-04-25 19:29:57,668 - spotify_burner - INFO - Spotify API connection successful
+2025-04-25 19:29:59,914 - spotify_burner - ERROR - Unexpected error: 'SpotifyBurner' object has no attribute 'about_app'
+2025-04-25 19:33:09,666 - spotify_burner - INFO - Applied theme: dark
+2025-04-25 19:33:09,941 - spotify_burner - INFO - Spotify API connection successful
+2025-04-25 19:33:20,413 - spotify_burner - INFO - Found 1 albums in C:\Users\pppum\Music\SpotifyDownloads
+2025-04-25 19:33:42,459 - spotify_burner - INFO - Configuration saved successfully.
+2025-04-25 19:57:15,226 - spotify_burner - INFO - Applied theme: dark
+2025-04-25 19:57:15,630 - spotify_burner - INFO - Spotify API connection successful
+2025-04-25 20:00:28,372 - spotify_burner - INFO - Found 1 albums in C:\Users\pppum\Music\SpotifyDownloads
+2025-04-25 20:00:34,396 - spotify_burner - INFO - Deleted album: C:\Users\pppum\Music\SpotifyDownloads\Arden Jones - age tape 0
+2025-04-25 20:00:34,398 - spotify_burner - INFO - Found 0 albums in C:\Users\pppum\Music\SpotifyDownloads
+2025-04-25 20:00:37,706 - spotify_burner - INFO - Found 0 albums in C:\Users\pppum\Music\SpotifyDownloads

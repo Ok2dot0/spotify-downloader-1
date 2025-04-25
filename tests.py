@@ -24,7 +24,6 @@ from unittest.mock import patch, MagicMock, mock_open
 from io import BytesIO
 from PIL import Image
 import requests
-from rich.prompt import Prompt
 
 # Import the module to test
 import spotify_burner
@@ -410,7 +409,6 @@ class TestDownloadTracks(unittest.TestCase):
         self.assertEqual(mock_run.call_count, 3)
 
 
-@unittest.skip("Skip burning tests")
 class TestBurning(unittest.TestCase):
     """Tests for CD/DVD burning functionality."""
 
@@ -706,7 +704,6 @@ class TestThemeAndMetadata(unittest.TestCase):
         self.assertEqual(result, "[Album Cover: image12345.jpg]")
 
 
-@unittest.skip("Skip burning integration tests")
 class TestBurnIntegration(unittest.TestCase):
     """Tests for the integrated burning functionality."""
 
@@ -750,25 +747,6 @@ class TestBurnIntegration(unittest.TestCase):
         self.assertFalse(result)
         mock_imapi2.assert_called_once_with(self.temp_dir, "E:")
         mock_manual.assert_called_once_with(self.temp_dir)
-
-
-class TestSettingsMenu(unittest.TestCase):
-    """Tests for settings menu and theme selection."""
-
-    def setUp(self):
-        self.app = spotify_burner.SpotifyBurner()
-        # Prevent actual config save
-        self.app.save_config = lambda: None
-
-    @patch('spotify_burner.Prompt.ask')
-    @patch('spotify_burner.Confirm.ask', return_value=False)
-    def test_manage_settings_theme_selection(self, mock_confirm, mock_prompt):
-        # Sequence: select theme option '10', choose 'dark', then go back 'B'
-        mock_prompt.side_effect = ['10', 'dark', 'B']
-        # Run manage_settings once
-        self.app.manage_settings()
-        # After selecting, theme should be updated
-        self.assertEqual(self.app.theme, 'dark')
 
 
 if __name__ == '__main__':
