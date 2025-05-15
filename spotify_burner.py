@@ -24,7 +24,7 @@ import queue
 import logging
 from functools import partial
 from concurrent.futures import ThreadPoolExecutor
-from colorama import init, Fore, Back, Style
+from colorama import init, Fore, Back, Style as ColoramaStyle
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -32,6 +32,8 @@ from rich.layout import Layout
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
 from rich.prompt import Confirm, Prompt, IntPrompt
 from rich import box
+from rich.segment import Segment
+from rich.style import Style
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 from unittest.mock import MagicMock  # For tests
@@ -114,9 +116,95 @@ class SpotifyBurner:
         # Set up the download thread pool
         self.executor = ThreadPoolExecutor(max_workers=self.max_threads)
         
+        # Get terminal width for centering
+        self.terminal_width = console.width
+        
         # Initialize theme
         self.apply_theme(self.theme)
         
+    def center_text(self, text_or_renderable, width=None):
+        """Center text or a rich renderable in the terminal.
+        
+        Args:
+            text_or_renderable: String or Rich renderable to center
+            width: Optional specific width, defaults to terminal width
+            
+        Returns:
+            The centered object ready to be printed
+        """
+        width = width or self.terminal_width
+        
+        # For simple strings, use standard centering
+        if isinstance(text_or_renderable, str):
+            return text_or_renderable.center(width)
+            
+        # For Rich renderables, handle each type appropriately
+        elif isinstance(text_or_renderable, Table):
+            # Set a fixed width for tables (smaller than terminal width)
+            table_width = min(width - 10, 90)  # Leave room for borders
+            text_or_renderable.width = table_width
+            text_or_renderable.justify = "center"
+            
+            # Create padding to center the table in the terminal
+            padding = (width - table_width) // 2
+            return " " * padding + str(text_or_renderable)
+            
+        elif isinstance(text_or_renderable, Panel):
+            # Set a reasonable width for panels
+            panel_width = min(width - 10, 90)  # Leave room for borders
+            if not text_or_renderable.width:
+                text_or_renderable.width = panel_width
+                
+            # Create padding to center the panel
+            padding = (width - text_or_renderable.width) // 2
+            return " " * padding + str(text_or_renderable)
+            
+        else:
+            # For other renderables, estimate their width and center with padding
+            renderable_str = str(text_or_renderable)
+            lines = renderable_str.split("\n")
+            max_line_length = max(len(line) for line in lines) if lines else 0
+            padding = max(0, (width - max_line_length) // 2)
+            padded_lines = [" " * padding + line for line in lines]
+            return "\n".join(padded_lines)
+
+    def center_segment(self, segment_or_segments):
+        """Center a segment or list of segments in the terminal.
+        
+        Args:
+            segment_or_segments: A Segment or list of Segments to center
+            
+        Returns:
+            The centered segment(s)
+        """
+        term_width = self.terminal_width
+        
+        # Handle both single segment and lists of segments
+        segments = [segment_or_segments] if isinstance(segment_or_segments, Segment) else segment_or_segments
+        
+        # Calculate the visible length of all segments (without style codes)
+        total_length = 0
+        for segment in segments:
+            # For a segment, the text is the first part of the tuple
+            if hasattr(segment, 'text'):
+                total_length += len(segment.text)
+            else:
+                total_length += len(str(segment))
+        
+        # Calculate padding needed for centering
+        padding = (term_width - total_length) // 2
+        if padding < 0:
+            padding = 0
+            
+        # Create a padding segment
+        padding_segment = Segment(' ' * padding, style=Style(color="white"))
+        
+        # Return centered segments with padding at the beginning
+        if isinstance(segment_or_segments, Segment):
+            return [padding_segment, segment_or_segments]
+        else:
+            return [padding_segment] + segment_or_segments
+
     def load_config(self):
         """Load configuration from config file or create default."""
         if os.path.exists(CONFIG_FILE):
@@ -259,6 +347,330 @@ class SpotifyBurner:
             console.print(f"[bold red]Unexpected error: {e}[/bold red]")
             return False
 
+    def show_header(self):
+        """Display the application header."""
+        # Create a decorative ASCII art border around the header like in the reference image
+        border_color = "red"
+        
+        # Create an ASCII art header that exactly matches the reference image
+        border_top = f"""[{border_color}]
+╔═════════════════════════════════════════════════╗
+║                                                 ║
+║     ███████╗██████╗  ██████╗ ████████╗         ║
+║     ██╔════╝██╔══██╗██╔═══██╗╚══██╔══╝         ║
+║     ███████╗██████╔╝██║   ██║   ██║            ║
+║     ╚════██║██╔═══╝ ██║   ██║   ██║            ║
+║     ███████║██║     ╚██████╔╝   ██║            ║
+║     ╚══════╝╚═╝      ╚═════╝    ╚═╝            ║
+║                                                 ║
+║     ██████╗ ██╗   ██╗██████╗ ███╗   ██╗        ║
+║     ██╔══██╗██║   ██║██╔══██╗████╗  ██║        ║
+║     ██████╔╝██║   ██║██████╔╝██╔██╗ ██║        ║
+║     ██╔══██╗██║   ██║██╔══██╗██║╚██╗██║        ║
+║     ██████╔╝╚██████╔╝██║  ██║██║ ╚████║        ║
+║     ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═══╝        ║
+║                                                 ║
+╚═════════════════════════════════════════════════╝
+[/{border_color}]"""
+
+        # Center version number below the border
+        version_text = f"[bold white]v{VERSION}[/bold white]"
+        
+        # Center everything
+        console.print("")  # Add some space at the top
+        console.print(self.center_text(border_top))
+        console.print(self.center_text(version_text))
+        console.print("")
+          # Subtitle
+        console.print(self.center_text("[bold]Search, download, and burn your favorite music![/bold]"))
+        console.print("")
+        
+    def display_track_info(self, track):
+        """Display detailed track information.
+        
+        Args:
+            track: Track data from Spotify API
+            
+        Returns:
+            list: Track URI for downloading
+        """
+        # Create a title with themed styling
+        title_text = "[bold cyan]TRACK DETAILS[/bold cyan]"
+        console.print(self.center_text(title_text))
+        console.print(self.center_text(f"[{app_state['theme']['border']}]{'═' * 60}[/{app_state['theme']['border']}]"))
+        console.print("")
+        
+        # Get basic track info
+        track_name = track.get('name', 'Unknown')
+        artists = ", ".join([artist['name'] for artist in track.get('artists', [])])
+        duration_ms = track.get('duration_ms', 0)
+        duration_str = self.format_duration(duration_ms)
+        album_name = track.get('album', {}).get('name', 'Unknown')
+        release_date = track.get('album', {}).get('release_date', 'Unknown')
+        track_number = track.get('track_number', 0)
+        disc_number = track.get('disc_number', 0)
+        popularity = track.get('popularity', 0)  # 0-100 scale
+        
+        # Create a visual popularity meter
+        pop_meter = "█" * (popularity // 10) + "░" * (10 - (popularity // 10))
+        popularity_display = f"{pop_meter} ({popularity}%)"
+        
+        # Get album art if available
+        album_image_url = None
+        if 'album' in track and 'images' in track['album'] and track['album']['images']:
+            album_image_url = track['album']['images'][0]['url']
+        
+        # Create a grid layout for better visual organization
+        layout = Layout()
+        layout.split_column(
+            Layout(name="header"),
+            Layout(name="content"),
+            Layout(name="footer")
+        )
+        
+        layout["content"].split_row(
+            Layout(name="track_info"),
+            Layout(name="album_info")
+        )
+        
+        # Create layout for track details with icons
+        track_info_table = Table(show_header=False, box=None, padding=(0, 2))
+        track_info_table.add_column("Field", style="green", justify="right")
+        track_info_table.add_column("Value", style="white")
+        
+        track_info_table.add_row("🎵 Title:", f"[bold white]{track_name}[/bold white]")
+        track_info_table.add_row("👤 Artist:", f"[yellow]{artists}[/yellow]")
+        track_info_table.add_row("⏱️ Duration:", f"[cyan]{duration_str}[/cyan]")
+        track_info_table.add_row("🔢 Track Number:", f"{track_number} (Disc {disc_number})")
+        track_info_table.add_row("⭐ Popularity:", popularity_display)
+        
+        # Create a panel for track info
+        track_panel = Panel(
+            track_info_table,
+            title="Track Information",
+            title_align="left",
+            border_style=app_state["theme"]["border"],
+            box=app_state["theme"]["box"],
+            width=40,
+            expand=False
+        )
+        
+        # Create album info panel
+        album_info_table = Table(show_header=False, box=None, padding=(0, 2))
+        album_info_table.add_column("Field", style="green", justify="right")
+        album_info_table.add_column("Value", style="white")
+        
+        album_info_table.add_row("💿 Album:", f"[bold white]{album_name}[/bold white]")
+        album_info_table.add_row("📅 Release Date:", f"[yellow]{release_date}[/yellow]")
+        
+        # Create a panel for album info
+        album_panel = Panel(
+            album_info_table,
+            title="Album Information",
+            title_align="left",
+            border_style=app_state["theme"]["border"],
+            box=app_state["theme"]["box"],
+            width=40,
+            expand=False
+        )
+        
+        # Create a grid to display the two panels side by side
+        info_layout = Table.grid(padding=1)
+        info_layout.add_column("Left", justify="center")
+        info_layout.add_column("Right", justify="center")
+        info_layout.add_row(track_panel, album_panel)
+        
+        console.print(self.center_text(info_layout))
+        console.print("")
+        
+        # Add a confirmation panel
+        confirm_panel = Panel(
+            "[white]Use this track for download? Type [bold]Y[/bold] to confirm or [bold]N[/bold] to cancel[/white]",
+            border_style="blue",
+            box=box.SIMPLE,
+            expand=False,
+            width=80
+        )
+        console.print(self.center_text(confirm_panel))
+        console.print("")
+        
+        # Return the track URI for downloading
+        return [track.get('uri')]
+
+    def display_album_info(self, album):
+        """Display detailed album information and tracks.
+        
+        Args:
+            album: Album data from Spotify API
+            
+        Returns:
+            list: Track URIs for downloading
+        """
+        # Create a title with themed styling
+        title_text = "[bold cyan]ALBUM DETAILS[/bold cyan]"
+        console.print(self.center_text(title_text))
+        console.print(self.center_text(f"[{app_state['theme']['border']}]{'═' * 60}[/{app_state['theme']['border']}]"))
+        console.print("")
+        
+        # Get album ID to fetch full details
+        album_id = album.get('id')
+        
+        try:
+            # Show loading spinner while getting detailed info
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[cyan]Loading album details...[/cyan]"),
+                transient=True,
+            ) as progress:
+                task = progress.add_task("loading", total=None)
+                
+                # Get complete album details including all tracks
+                album_details = self.spotify.album(album_id)
+            
+            # Extract album info
+            album_name = album_details.get('name', 'Unknown')
+            artists = ", ".join([artist['name'] for artist in album_details.get('artists', [])])
+            release_date = album_details.get('release_date', 'Unknown')
+            total_tracks = album_details.get('total_tracks', 0)
+            album_type = album_details.get('album_type', 'album').capitalize()
+            label = album_details.get('label', 'Unknown')
+            popularity = album_details.get('popularity', 0)
+            
+            # Create a visual popularity meter
+            pop_meter = "█" * (popularity // 10) + "░" * (10 - (popularity // 10))
+            popularity_display = f"{pop_meter} ({popularity}%)"
+            
+            # Get tracks
+            tracks = album_details.get('tracks', {}).get('items', [])
+            
+            # Get album art if available
+            album_art_url = None
+            if 'images' in album_details and album_details['images']:
+                album_art_url = album_details['images'][0]['url']
+            
+            # Create album info table with visual enhancements
+            album_info_table = Table(show_header=False, box=None, padding=(0, 2))
+            album_info_table.add_column("Field", style="green", justify="right")
+            album_info_table.add_column("Value", style="white")
+            
+            album_info_table.add_row("💿 Title:", f"[bold white]{album_name}[/bold white]")
+            album_info_table.add_row("👤 Artist:", f"[yellow]{artists}[/yellow]")
+            album_info_table.add_row("📅 Release:", f"[cyan]{release_date}[/cyan]")
+            album_info_table.add_row("🏷️ Label:", label)
+            album_info_table.add_row("📊 Type:", f"[magenta]{album_type}[/magenta]")
+            album_info_table.add_row("🎵 Tracks:", f"[bold green]{total_tracks}[/bold green]")
+            album_info_table.add_row("⭐ Popularity:", popularity_display)
+            
+            # Create a panel with the album info
+            album_panel = Panel(
+                album_info_table,
+                title="Album Information",
+                title_align="left",
+                title_style="bold cyan",
+                border_style=app_state["theme"]["border"],
+                box=app_state["theme"]["box"],
+                width=80,
+                expand=False
+            )
+            
+            console.print(self.center_text(album_panel))
+            console.print("")
+            
+            # Display track list with enhanced visual styling
+            track_title = f"[bold cyan]TRACK LIST ({total_tracks} tracks)[/bold cyan]"
+            console.print(self.center_text(track_title))
+            console.print("")
+            
+            # Create a styled table for tracks
+            tracks_table = Table(
+                box=app_state["theme"]["box"],
+                border_style=app_state["theme"]["border"],
+                row_styles=["", "dim"],  # Alternating row styles
+                highlight=True,
+                width=80,
+                expand=False
+            )
+            
+            tracks_table.add_column("#", style="cyan", justify="right", width=4)
+            tracks_table.add_column("Track Title", style="white")
+            tracks_table.add_column("Duration", style="yellow", justify="right", width=10)
+            tracks_table.add_column("Preview", style="green", justify="center", width=8)
+            
+            track_uris = []
+            for i, track in enumerate(tracks, 1):
+                duration_ms = track.get('duration_ms', 0)
+                duration_str = self.format_duration(duration_ms)
+                track_name = track.get('name', 'Unknown')
+                
+                # Check if preview URL is available
+                has_preview = "🔊 Yes" if track.get('preview_url') else "❌ No"
+                
+                tracks_table.add_row(
+                    str(i), 
+                    track_name, 
+                    duration_str,
+                    has_preview
+                )
+                
+                track_uris.append(track.get('uri'))
+                
+            # Create a panel for the tracks table
+            tracks_panel = Panel(
+                tracks_table,
+                title="Album Tracks",
+                title_align="center",
+                title_style="bold green",
+                border_style=app_state["theme"]["border"],
+                box=app_state["theme"]["box"],
+                padding=(1, 2),
+                expand=False
+            )
+            
+            console.print(self.center_text(tracks_panel))
+            console.print("")
+            
+            # Add a confirmation panel
+            total_duration_ms = sum(track.get('duration_ms', 0) for track in tracks)
+            minutes = total_duration_ms // 60000
+            seconds = (total_duration_ms % 60000) // 1000
+            total_duration = f"{minutes} minutes, {seconds} seconds"
+            
+            confirm_text = (
+                f"[bold white]Total Playtime:[/bold white] [cyan]{total_duration}[/cyan]\n"
+                f"[bold white]Downloading:[/bold white] [green]{len(track_uris)} tracks[/green]\n\n"
+                "[white]Use this album for download? Type [bold]Y[/bold] to confirm or [bold]N[/bold] to cancel[/white]"
+            )
+            
+            confirm_panel = Panel(
+                confirm_text,
+                title="Confirm Download",
+                border_style="blue",
+                box=box.ROUNDED,
+                expand=False,
+                width=80
+            )
+            console.print(self.center_text(confirm_panel))
+            console.print("")
+            
+            return track_uris
+            
+        except Exception as e:
+            logger.error(f"Error fetching album details: {e}")
+            
+            # Display an error panel with details
+            error_panel = Panel(
+                f"[bold red]Error fetching album details:[/bold red]\n[white]{str(e)}[/white]",
+                title="Error",
+                border_style="red",
+                box=app_state["theme"]["box"],
+                expand=False,
+                width=80
+            )
+            console.print(self.center_text(error_panel))
+            console.print("")
+            
+            return []
+
     def search_music(self, query):
         """Search for music on Spotify.
         
@@ -266,1406 +678,184 @@ class SpotifyBurner:
             query: Search query string
             
         Returns:
-            dict: Selected album or track info, or None if cancelled
+            dict: Selected item data or None if cancelled
         """
-        if not query:
-            console.print("[yellow]Search query is empty[/yellow]")
-            return None
-            
-        logger.info(f"Searching for: {query}")
-        console.print(f"\n[bold]Searching for:[/bold] {query}")
-        
-        try:
-            # Search for both albums and tracks
-            albums_result = self.spotify.search(query, type="album", limit=10)
-            tracks_result = self.spotify.search(query, type="track", limit=10)
-            
-            # Extract results
-            albums = albums_result["albums"]["items"] if "albums" in albums_result else []
-            tracks = tracks_result["tracks"]["items"] if "tracks" in tracks_result else []
-            
-            # Display results only if found
-            if not albums and not tracks:
-                console.print("[yellow]No results found. Try a different search query.[/yellow]")
-                return None
-                
-            # Display albums
-            if albums:
-                console.print("\n[bold]Albums:[/bold]")
-                album_table = Table(box=box.SIMPLE)
-                album_table.add_column("No.", style="dim", width=4, justify="right")
-                album_table.add_column("Album", style="cyan")
-                album_table.add_column("Artist", style="green")
-                album_table.add_column("Year", style="yellow", width=6)
-                
-                for i, album in enumerate(albums, 1):
-                    # Extract album information
-                    album_name = album["name"]
-                    artist_name = album["artists"][0]["name"] if album["artists"] else "Unknown Artist"
-                    release_year = album.get("release_date", "")[:4] if album.get("release_date") else ""
-                    
-                    # Add to table
-                    album_table.add_row(str(i), album_name, artist_name, release_year)
-                
-                console.print(album_table)
-            
-            # Display tracks
-            if tracks:
-                console.print("\n[bold]Tracks:[/bold]")
-                track_table = Table(box=box.SIMPLE)
-                track_table.add_column("No.", style="dim", width=4, justify="right")
-                track_table.add_column("Title", style="cyan")
-                track_table.add_column("Artist", style="green")
-                track_table.add_column("Album", style="yellow")
-                
-                start_index = len(albums) + 1
-                for i, track in enumerate(tracks, start_index):
-                    # Extract track information
-                    track_name = track["name"]
-                    artist_name = track["artists"][0]["name"] if track["artists"] else "Unknown Artist"
-                    album_name = track["album"]["name"] if "album" in track else "Single"
-                    
-                    # Add to table
-                    track_table.add_row(str(i), track_name, artist_name, album_name)
-                
-                console.print(track_table)
-            
-            # Prompt for selection
-            total_items = len(albums) + len(tracks)
-            input_message = f"Enter selection number [1-{total_items}], or 'C' to cancel"
-            
-            while True:
-                choice = Prompt.ask(input_message, choices=[str(i) for i in range(1, total_items + 1)] + ["C", "c"])
-                
-                if choice.upper() == "C":
-                    return None
-                    
-                try:
-                    # Parse selection
-                    index = int(choice) - 1
-                    
-                    # Determine if album or track
-                    if index < len(albums):
-                        return {
-                            "type": "album",
-                            "item": albums[index]
-                        }
-                    else:
-                        track_index = index - len(albums)
-                        return {
-                            "type": "track",
-                            "item": tracks[track_index]
-                        }
-                except (ValueError, IndexError):
-                    console.print(f"[red]Invalid selection. Please enter a number between 1 and {total_items}.[red]")
-                    
-        except KeyboardInterrupt:
-            console.print("\n[yellow]Search cancelled by user.[/yellow]")
-            return None
-        except Exception as e:
-            logger.error(f"Error during search: {e}")
-            console.print(f"[bold red]Error during search: {e}[/bold red]")
-            return None
-
-    def search_and_download(self):
-        """Search for and download music from Spotify."""
-        console.clear()
-        
-        # Show search header
-        console.print("[bold cyan]SEARCH AND DOWNLOAD MUSIC[bold cyan]")
-        console.print("=" * 50)
-        
-        # Get search query
-        query = Prompt.ask("Enter song or album name to search")
-        if not query:
-            return
-        
-        # Search for music
-        selection = self.search_music(query)
-        if not selection:
-            self.wait_for_keypress()
-            return
-        
-        # Display detailed information and get tracks
-        tracks = self.display_music_info(selection)
-        
-        # Get album URL for more efficient album downloads
-        album_url = None
-        if selection["type"] == "album":
-            album_url = selection["item"]["external_urls"].get("spotify")
-        
-        # Confirm download
-        if not Confirm.ask("\nDo you want to download these tracks?"):
-            return
-        
-        # Create album-specific directory for the download
-        output_dir = None
-        if selection["type"] == "album":
-            # Create directory with "Artist - Album" format
-            album_name = selection["item"]["name"]
-            artist_name = selection["item"]["artists"][0]["name"]
-            album_dir = f"{artist_name} - {album_name}"
-            output_dir = os.path.join(self.download_dir, album_dir)
-        else:
-            # For single tracks, use the parent album info if available
-            track = selection["item"]
-            if "album" in track:
-                album_name = track["album"]["name"]
-                artist_name = track["artists"][0]["name"]
-                album_dir = f"{artist_name} - {album_name}"
-                output_dir = os.path.join(self.download_dir, album_dir)
-        
-        # Download tracks
-        success = self.download_tracks(tracks, output_dir, album_url)
-        
-        if not success:
-            console.print("[red]Download failed or was incomplete![red]")
-            self.wait_for_keypress()
-            return
-        
-        # Enhance metadata
-        self.enhance_download_metadata(selection, output_dir)
-        
-        # Ask about burning
-        if Confirm.ask("\nDo you want to burn these tracks to CD/DVD?"):
-            self.burn_to_disc(output_dir, self.dvd_drive)
-        
-        self.wait_for_keypress()
-
-    def display_music_info(self, selection):
-        """Display detailed information about the selected music.
-        
-        Args:
-            selection: Dictionary containing album or track info
-            
-        Returns:
-            list: List of track URLs for downloading
-        """
-        if not selection:
-            return []
-            
-        item_type = selection["type"]
-        item = selection["item"]
-        
-        console.clear()
-        
-        if item_type == "album":
-            # Display album info
-            album_id = item["id"]
-            album_name = item["name"]
-            artist_name = item["artists"][0]["name"] if item["artists"] else "Unknown Artist"
-            release_date = item.get("release_date", "Unknown")
-            total_tracks = item.get("total_tracks", "Unknown")
-            
-            # Display album info in a panel
-            album_info = f"[bold cyan]{album_name}[/bold cyan]\n"
-            album_info += f"[green]Artist:[/green] {artist_name}\n"
-            album_info += f"[green]Release Date:[/green] {release_date}\n"
-            album_info += f"[green]Tracks:[/green] {total_tracks}"
-            
-            console.print(Panel(album_info, title="Album Information", border_style="cyan"))
-            
-            # Get album tracks
-            try:
-                album_tracks = self.spotify.album_tracks(album_id)
-                tracks = album_tracks["items"] if "items" in album_tracks else []
-                
-                if not tracks:
-                    console.print("[yellow]No tracks found in this album.[/yellow]")
-                    return []
-                
-                # Display tracks in a table
-                tracks_table = Table(title=f"Tracks in {album_name}", box=box.SIMPLE)
-                tracks_table.add_column("No.", style="dim", width=4, justify="right")
-                tracks_table.add_column("Title", style="cyan")
-                tracks_table.add_column("Duration", style="yellow", justify="right")
-                
-                track_urls = []
-                for i, track in enumerate(tracks, 1):
-                    track_name = track["name"]
-                    duration_ms = track["duration_ms"]
-                    minutes, seconds = divmod(duration_ms // 1000, 60)
-                    duration = f"{minutes}:{seconds:02d}"
-                    
-                    tracks_table.add_row(str(i), track_name, duration)
-                    
-                    # Add track URL
-                    track_urls.append(track["external_urls"].get("spotify", ""))
-                
-                console.print(tracks_table)
-                return track_urls
-                
-            except Exception as e:
-                logger.error(f"Error getting album tracks: {e}")
-                console.print(f"[bold red]Error getting album tracks: {e}[/bold red]")
-                return []
-                
-        elif item_type == "track":
-            # Display track info
-            track_name = item["name"]
-            artist_name = item["artists"][0]["name"] if item["artists"] else "Unknown Artist"
-            album_name = item["album"]["name"] if "album" in item else "Single"
-            duration_ms = item["duration_ms"]
-            minutes, seconds = divmod(duration_ms // 1000, 60)
-            duration = f"{minutes}:{seconds:02d}"
-            
-            # Display track info in a panel
-            track_info = f"[bold cyan]{track_name}[/bold cyan]\n"
-            track_info += f"[green]Artist:[/green] {artist_name}\n"
-            track_info += f"[green]Album:[/green] {album_name}\n"
-            track_info += f"[green]Duration:[/green] {duration}"
-            
-            console.print(Panel(track_info, title="Track Information", border_style="cyan"))
-            
-            # Return single track URL
-            track_url = item["external_urls"].get("spotify", "")
-            return [track_url] if track_url else []
-            
-        return []
-
-    def enhance_download_metadata(self, selection, output_dir):
-        """Enhance downloaded music metadata.
-        
-        Args:
-            selection: Dictionary containing album or track info
-            output_dir: Directory containing downloaded music
-        """
-        if not selection or not output_dir:
-            return
-            
-        console.print("\n[bold cyan]Enhancing metadata...[/bold cyan]")
-        
-        try:
-            # TODO: Additional metadata enhancement could be implemented here
-            # - Fix tags
-            
-            console.print("[green]Metadata enhancement completed[/green]")
-            
-        except Exception as e:
-            logger.error(f"Error enhancing metadata: {e}")
-            console.print(f"[yellow]Error enhancing metadata: {e}[/yellow]")
-
-    def play_album(self, album_path):
-        """Play an album with the default system player.
-        
-        Args:
-            album_path: Path to the album directory
-        """
-        if not os.path.exists(album_path):
-            console.print("[red]Album path not found.[/red]")
-            return
-            
-        console.print(f"[bold]Opening album:[/bold] {album_path}")
-        
-        try:
-            if sys.platform == "win32":
-                os.startfile(album_path)
-            elif sys.platform == "darwin":  # macOS
-                subprocess.run(["open", album_path])
-            else:  # Linux
-                subprocess.run(["xdg-open", album_path])
-        except Exception as e:
-            console.print(f"[red]Error opening album: {e}[/red]")
-            
-    def delete_album(self, album_path):
-        """Delete an album directory and its contents.
-        
-        Args:
-            album_path: Path to the album directory
-            
-        Returns:
-            bool: True if deletion was successful
-        """
-        if not os.path.exists(album_path):
-            console.print("[red]Album path not found.[/red]")
-            return False
-            
-        try:
-            shutil.rmtree(album_path)
-            logger.info(f"Deleted album: {album_path}")
-            console.print(f"[green]Album deleted successfully.[/green]")
-            return True
-        except Exception as e:
-            logger.error(f"Error deleting album {album_path}: {e}")
-            console.print(f"[red]Error deleting album: {e}[/red]")
-            return False
-
-    def detect_optical_drives(self):
-        """Detect optical drives on the system."""
-        drives = []
-        
-        # Windows-specific code to detect optical drives
-        if sys.platform == "win32" or sys.platform == "win64":
-            if WINDOWS_IMAPI_AVAILABLE:
-                try:
-                    # Initialize COM for this thread
-                    pythoncom.CoInitialize()
-                    
-                    # Create IMAPI2 disc master
-                    disc_master = win32com.client.Dispatch("IMAPI2.MsftDiscMaster2")
-                    disc_recorder = win32com.client.Dispatch("IMAPI2.MsftDiscRecorder2")
-                    
-                    # Enumerate all disc recorders
-                    for i in range(disc_master.Count):
-                        unique_id = disc_master.Item(i)
-                        disc_recorder.InitializeDiscRecorder(unique_id)
-                        
-                        # Get the drive letter
-                        drive_letter = disc_recorder.VolumePathNames(0)
-                        drives.append(drive_letter)
-                        
-                        logger.info(f"Found optical drive: {drive_letter}")
-                        
-                except Exception as e:
-                    logger.error(f"Error detecting optical drives via IMAPI2: {e}")
-                    # Fallback to the standard method
-                    drives = self._detect_optical_drives_fallback()
-                finally:
-                    # Clean up COM
-                    pythoncom.CoUninitialize()
-            else:
-                # Use fallback if pywin32 is not available
-                drives = self._detect_optical_drives_fallback()
-        else:
-            # For Unix-based systems
-            if os.path.exists('/dev/cdrom'):
-                drives.append('/dev/cdrom')
-            if os.path.exists('/dev/dvd'):
-                drives.append('/dev/dvd')
-        
-        return drives
-        
-    def _detect_optical_drives_fallback(self):
-        """Fallback method to detect optical drives using standard Windows API."""
-        drives = []
-        
-        # Windows-specific code to detect optical drives
-        if sys.platform == "win32" or sys.platform == "win64":
-            # Import ctypes within the method to avoid import issues on non-Windows platforms
-            import ctypes
-            
-            for drive in range(ord('A'), ord('Z')+1):
-                drive_letter = chr(drive) + ':'
-                try:
-                    drive_type = ctypes.windll.kernel32.GetDriveTypeW(drive_letter)
-                    # DRIVE_CDROM = 5
-                    if drive_type == 5:
-                        drives.append(drive_letter)
-                        logger.info(f"Found optical drive (fallback): {drive_letter}")
-                except Exception as e:
-                    logger.debug(f"Error checking drive {drive_letter}: {e}")
-                    pass
-                    
-        return drives
-
-    def burn_to_disc(self, source_dir, drive=None):
-        """Burn files to CD/DVD using CDBurnerXP command-line.
-        
-        Args:
-            source_dir: Directory containing files to burn
-            drive: Drive letter to burn to
-            
-        Returns:
-            bool: True if burning was successful, False otherwise
-        """
-        logger.info(f"Starting automatic disc burning process for {source_dir}")
-        console.print("[bold cyan]Starting automatic disc burning process...[/bold cyan]")
-        
-        # Non-Windows platform checks
-        if sys.platform != "win32" and sys.platform != "win64":
-            logger.error("CD/DVD burning is only supported on Windows")
-            console.print("[red]Automated CD/DVD burning is only supported on Windows.[red]")
-            
-            # For non-Windows, we have to use manual instructions
-            self.show_manual_burn_instructions(source_dir)
-            return False
-        
-        # Use CDBurnerXP command-line for burning; fall back to default if not set
-        default_exe = "C:\\Program Files\\CDBurnerXP\\cdbxpcmd.exe"
-        cdburnerxp_path = self.burn_settings.get("cdburnerxp_path") or default_exe
-        if not os.path.exists(cdburnerxp_path):
-            logger.error(f"CDBurnerXP not found at {cdburnerxp_path}")
-            console.print(f"[bold red]Error: CDBurnerXP not found at {cdburnerxp_path}[/bold red]")
-            self.show_manual_burn_instructions(source_dir)
-            return False
-        try:
-            # Prepare disc label
-            dir_name = os.path.basename(source_dir)
-            # Use only album name (after ' - ')
-            if ' - ' in dir_name:
-                disc_label = dir_name.split(' - ', 1)[1]
-            else:
-                disc_label = dir_name or f"SpotifyMusic_{time.strftime('%Y%m%d')}"
-            disc_label = re.sub(r'[^\w\s-]', '', disc_label).strip()
-            disc_label = disc_label[:16] if len(disc_label) > 16 else disc_label
-            # Detect and select drive
-            optical_drives = self.detect_optical_drives()
-            if not optical_drives:
-                logger.error("No optical drives detected for burning")
-                console.print("[bold red]Error: No optical drives detected[/bold red]")
-                self.show_manual_burn_instructions(source_dir)
-                return False
-            selected_drive = (drive or optical_drives[0]).replace(':', '')
-            # Determine burn action and source folder based on content
-            video_ts = os.path.join(source_dir, 'VIDEO_TS')
-            # Check for VIDEO_TS folder for DVD-Video
-            if os.path.isdir(video_ts):
-                action = '--burn-video'
-                burn_folder = video_ts
-            else:
-                # Check if folder contains only audio files
-                audio_exts = ('.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac')
-                files = [f for f in os.listdir(source_dir) if os.path.isfile(os.path.join(source_dir, f))]
-                if files and all(f.lower().endswith(audio_exts) for f in files):
-                    action = '--burn-audio'
-                    burn_folder = source_dir
-                else:
-                    action = '--burn-data'
-                    burn_folder = source_dir
-            # Build CLI arguments
-            cmd = [
-                cdburnerxp_path,
-                action,
-                f'-device:{selected_drive}',
-                f'-folder:"{burn_folder}"',
-                f'-name:{disc_label}'
-            ]
-            # Add audio-specific mode
-            if action == '--burn-audio':
-                cmd.append('-dao')  # Disc-at-once for gapless
-            # Add speed if configured
-            if self.burn_settings.get("speed"):
-                cmd.append(f'-speed:{self.burn_settings.get("speed")}')
-            if self.burn_settings.get("verify"):
-                cmd.append('-verify')
-            if self.burn_settings.get("eject"):
-                cmd.append('-eject')
-            # Finalize disc
-            cmd.append('-close')
-            console.print("[cyan]Launching CDBurnerXP burning process...[/cyan]")
-            logger.info(f"Executing CDBurnerXP command: {' '.join(cmd)}")
-            # Run and capture output
-            process = subprocess.run(cmd, capture_output=True, text=True)
-            if process.returncode == 0:
-                console.print("[green]Burn completed successfully![green]")
-                logger.info("Burn completed successfully")
-                return True
-            else:
-                error_msg = process.stderr or process.stdout or "Unknown error"
-                logger.error(f"Error during burn process: {error_msg}")
-                console.print(f"[bold red]Error during burn: {error_msg}[bold red]")
-                self.show_manual_burn_instructions(source_dir)
-                return False
-        except Exception as e:
-            logger.error(f"Error during burn process: {e}")
-            console.print(f"[bold red]Error during burn process: {e}[bold red]")
-            self.show_manual_burn_instructions(source_dir)
-            return False
-
-    def show_manual_burn_instructions(self, source_dir):
-        """Display manual instructions for burning files to CD/DVD."""
-        console.print("\n[bold cyan]Manual CD/DVD Burning Instructions[bold cyan]")
-        console.print("=" * 50)
-        console.print(f"Your downloaded files are located in:\n[bold]{source_dir}[bold]\n")
-        
-        if sys.platform == "win32" or sys.platform == "win64":
-            console.print("[bold]Windows Instructions:[bold]")
-            console.print("1. Insert a blank CD/DVD into your drive")
-            console.print("2. Open File Explorer and navigate to the download folder")
-            console.print("3. Select all files you want to burn")
-            console.print("4. Right-click and select 'Send to' → 'DVD RW Drive'")
-            console.print("5. In the Windows disc burning wizard, enter a disc title")
-            console.print("6. Click 'Next' and follow the on-screen instructions")
-        
-        elif sys.platform == "darwin":  # macOS
-            console.print("[bold]macOS Instructions:[bold]")
-            console.print("1. Insert a blank CD/DVD into your drive")
-            console.print("2. Open Finder and navigate to the download folder")
-            console.print("3. Select all files you want to burn")
-            console.print("4. Right-click and select 'Burn [items] to Disc'")
-            console.print("5. Follow the on-screen instructions")
-        
-        else:  # Linux
-            console.print("[bold]Linux Instructions:[bold]")
-            console.print("1. Insert a blank CD/DVD into your drive")
-            console.print("2. Use a burning application like Brasero, K3b, or Xfburn")
-            console.print("3. Create a new audio CD project")
-            console.print("4. Add the music files from the download folder")
-            console.print("5. Start the burning process and follow the application's instructions")
-        
-        # Wait for user acknowledgment
-        self.wait_for_keypress("Press any key to continue...")
-
-    def show_header(self):
-        """Display the application header."""
-        header = """
-[bold cyan]╔══════════════════════════════════════════════════════════════════════╗[bold cyan]
-[bold cyan]║                                                                      ║[bold cyan]
-[bold cyan]║      [bold white]SPOTIFY ALBUM DOWNLOADER AND BURNER v{VERSION}[bold white]                  ║[bold cyan]
-[bold cyan]║                                                                      ║[bold cyan]
-[bold cyan]╚══════════════════════════════════════════════════════════════════════╝[bold cyan]
-        """.format(VERSION=VERSION)
-        
-        console.print(header)
-        console.print("[bold]Search, download, and burn your favorite music![bold]\n")
-
-    def show_main_menu(self):
-        """Display the main menu and handle user input."""
-        while True:
-            console.clear()
-            self.show_header()
-            
-            # Create options table
-            table = Table(show_header=False, box=box.SIMPLE_HEAD, show_edge=False)
-            table.add_column("Key", style="cyan", justify="right")
-            table.add_column("Option", style="white")
-            
-            table.add_row("[1]", "[bold green]Manage Existing Albums[bold green] - Play, burn or delete your downloaded albums")
-            table.add_row("[2]", "[bold cyan]Search & Download[bold cyan] - Find and download new music from Spotify")
-            table.add_row("[3]", "[bold magenta]Video Management[bold magenta] - Download and manage videos")
-            table.add_row("[4]", "[bold yellow]Settings[bold yellow] - Configure download and burning options")
-            table.add_row("[5]", "[bold blue]About[bold blue] - Information about this application")
-            table.add_row("[Q]", "[bold red]Exit[bold red] - Quit the application")
-            
-            console.print(table)
-            console.print()
-            
-            choice = Prompt.ask(
-                "Select an option",
-                choices=["1", "2", "3", "4", "5", "Q", "q"],
-                default="2"
-            ).upper()
-            
-            if choice == "1":
-                self.show_existing_albums()
-            elif choice == "2":
-                self.search_and_download()
-            elif choice == "3":
-                self.show_video_menu()
-            elif choice == "4":
-                self.manage_settings()
-            elif choice == "5":
-                self.about_app()
-            elif choice == "Q":
-                console.print("[bold green]Thank you for using Spotify Album Downloader and Burner![bold green]")
-                return
-
-    def show_existing_albums(self):
-        """Display existing albums and provide options to manage them."""
-        albums = self.scan_existing_albums()
-        
-        if not albums:
-            console.print("[yellow]No albums found in your download directory.[/yellow]")
-            self.wait_for_keypress("Press any key to return to the main menu...")
-            return False
-            
-        while True:
-            console.clear()
-            console.print(f"\n[bold green]Found {len(albums)} existing albums:[bold green]")
-            
-            # Create a table to display the albums
-            table = Table(title="Your Music Library", show_header=True, header_style="bold blue", box=box.ROUNDED)
-            table.add_column("#", style="dim", width=4)
-            table.add_column("Album", style="cyan")
-            table.add_column("Artist", style="green")
-            table.add_column("Tracks", justify="right")
-            table.add_column("Size (MB)", justify="right")
-            table.add_column("Date Added", justify="right")
-            
-            # Add rows to the table
-            for i, album in enumerate(albums):
-                table.add_row(
-                    str(i + 1),
-                    album['name'],
-                    album['artist'],
-                    str(album['tracks']),
-                    str(album['size']),
-                    album['date']
-                )
-            
-            console.print(table)
-            
-            # Provide options to manage albums
-            console.print("\n[bold]Album Management Options:[bold]")
-            console.print("[1] [cyan]Play album[cyan] (opens in default player)")
-            console.print("[2] [green]Burn album to CD/DVD[green]")
-            console.print("[3] [blue]Burn multiple albums to CD/DVD[blue]")
-            console.print("[4] [red]Delete album[red]")
-            console.print("[5] [yellow]Return to main menu[yellow]")
-            
-            choice = Prompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5"], default="5")
-                
-            if choice == "1":  # Play album
-                album_index = self.prompt_for_album_number(albums) - 1
-                if 0 <= album_index < len(albums):
-                    self.play_album(albums[album_index]['path'])
-                    self.wait_for_keypress("Press any key to continue...")
-                    
-            elif choice == "2":  # Burn single album
-                album_index = self.prompt_for_album_number(albums) - 1
-                if 0 <= album_index < len(albums):
-                    self.burn_to_disc(albums[album_index]['path'], self.dvd_drive)
-                    self.wait_for_keypress("Press any key to continue...")
-            
-            elif choice == "3":  # Burn multiple albums
-                nums = self.prompt_for_album_numbers(albums)
-                selected = [albums[n-1]['path'] for n in nums]
-                temp_dir = tempfile.mkdtemp()
-                for p in selected:
-                    shutil.copytree(p, os.path.join(temp_dir, os.path.basename(p)))
-                self.burn_to_disc(temp_dir, self.dvd_drive)
-                shutil.rmtree(temp_dir, ignore_errors=True)
-                self.wait_for_keypress("Press any key to continue...")
-            
-            elif choice == "4":  # Delete album
-                album_index = self.prompt_for_album_number(albums) - 1
-                if 0 <= album_index < len(albums):
-                    if Confirm.ask(f"Are you sure you want to delete '{albums[album_index]['name']}'?"):
-                        self.delete_album(albums[album_index]['path'])
-                        # Refresh the album list
-                        albums = self.scan_existing_albums()
-                        if not albums:
-                            # No more albums left
-                            console.print("[yellow]No more albums in your library.[yellow]")
-                            self.wait_for_keypress("Press any key to return to the main menu...")
-                            return False
-                        
-            elif choice == "5":  # Return to main menu
-                return True
-
-    def scan_existing_albums(self):
-        """Scan the download directory for existing albums.
-        
-        Returns:
-            list: A list of dictionaries with album information
-        """
-        console.print("[bold blue]Scanning for existing albums...[bold blue]")
-        
-        # Make sure the download directory exists
-        if not os.path.exists(self.download_dir):
-            os.makedirs(self.download_dir, exist_ok=True)
-            console.print(f"[yellow]Created new download directory: {self.download_dir}[yellow]")
-            return []
-            
-        # Get all subdirectories in the download directory
-        albums = []
-        
-        try:
-            # Walk through the download directory to find all subdirectories (albums)
-            subdirs = [d for d in os.listdir(self.download_dir) 
-                      if os.path.isdir(os.path.join(self.download_dir, d))]
-            
-            if not subdirs:
-                console.print("[yellow]No existing albums found.[yellow]")
-                return []
-                
-            # Process each subdirectory as a potential album
-            for album_dir in subdirs:
-                album_path = os.path.join(self.download_dir, album_dir)
-                
-                # Count the number of audio files in the directory
-                audio_files = [f for f in os.listdir(album_path) 
-                              if f.lower().endswith(('.mp3', '.flac', '.ogg', '.m4a', '.wav'))]
-                
-                if not audio_files:
-                    continue  # Skip directories without audio files
-                
-                # Get the creation date of the directory
-                try:
-                    created_date = time.strftime('%Y-%m-%d', 
-                                                time.localtime(os.path.getctime(album_path)))
-                except:
-                    created_date = "Unknown"
-                
-                # Attempt to extract artist name and album name from directory name
-                parts = album_dir.split(' - ', 1)
-                if len(parts) > 1:
-                    artist = parts[0]
-                    title = parts[1]
-                else:
-                    artist = "Unknown"
-                    title = album_dir
-                
-                # Calculate total size
-                total_size = sum(os.path.getsize(os.path.join(album_path, f)) 
-                                for f in os.listdir(album_path) 
-                                if os.path.isfile(os.path.join(album_path, f)))
-                
-                # Convert to MB with 2 decimal places
-                size_mb = round(total_size / (1024 * 1024), 2)
-                
-                albums.append({
-                    'name': title,
-                    'artist': artist,
-                    'path': album_path,
-                    'tracks': len(audio_files),
-                    'date': created_date,
-                    'size': size_mb
-                })
-                
-            # Sort albums by date (newest first)
-            albums.sort(key=lambda x: x['date'], reverse=True)
-            
-            logger.info(f"Found {len(albums)} albums in {self.download_dir}")
-            return albums
-            
-        except Exception as e:
-            logger.error(f"Error scanning for albums: {e}")
-            console.print(f"[red]Error scanning for albums: {e}[red]")
-            return []
-
-    def wait_for_keypress(self, message="Press any key to continue..."):
-        """Wait for any key to be pressed."""
-        console.print(f"\n{message}", style="bold yellow")
-        
-        if sys.platform == "win32" or sys.platform == "win64":
-            msvcrt.getch()  # Windows
-        else:
-            input()  # Unix-based systems (Enter key)
-
-    def prompt_for_album_number(self, albums):
-        """Prompt user to select an album number."""
-        while True:
-            try:
-                album_num = int(Prompt.ask(f"Enter album number [1-{len(albums)}]"))
-                if 1 <= album_num <= len(albums):
-                    return album_num
-                else:
-                    console.print(f"[red]Please enter a number between 1 and {len(albums)}[/red]")
-            except ValueError:
-                console.print("[red]Please enter a valid number[/red]")
-
-    def prompt_for_album_numbers(self, albums):
-        """Prompt user to select one or multiple album numbers."""
-        while True:
-            input_str = Prompt.ask(f"Enter album numbers separated by commas [1-{len(albums)}]")
-            try:
-                nums = [int(x.strip()) for x in input_str.split(',')]
-                if all(1 <= n <= len(albums) for n in nums):
-                    return list(dict.fromkeys(nums))
-                else:
-                    console.print(f"[red]Numbers must be between 1 and {len(albums)}[/red]")
-            except ValueError:
-                console.print("[red]Please enter valid numbers separated by commas[/red]")
-
-    def prompt_for_video_urls(self):
-        """Prompt user to enter one or multiple video URLs separated by commas."""
-        input_str = Prompt.ask("Enter video URLs separated by commas")
-        return [url.strip() for url in input_str.split(',') if url.strip()]
-
-    def filter_videos_by_type(self, videos):
-        """Filter video list by audio-only, video-only, or both."""
-        console.print("\n[bold]Filter by type:[/bold]")
-        console.print("[1] Audio only")
-        console.print("[2] Video only")
-        console.print("[3] Both")
-        choice = Prompt.ask("Select type filter", choices=["1","2","3"], default="3")
-        audio_ext = ['.m4a', '.mp3', '.opus']
-        video_ext = ['.mp4', '.mkv', '.webm', '.avi', '.mov', '.flv']
-        if choice == '1':
-            videos = [v for v in videos if os.path.splitext(v['name'])[1].lower() in audio_ext]
-        elif choice == '2':
-            videos = [v for v in videos if os.path.splitext(v['name'])[1].lower() in video_ext]
-        return videos
-
-    def filter_videos_by_extension(self, videos):
-        """Filter video list by file extension."""
-        exts = sorted({os.path.splitext(v['name'])[1].lower() for v in videos})
-        if not exts:
-            return videos
-        console.print("\n[bold]Filter by extension:[/bold]")
-        choices = exts + ["All"]
-        choice = Prompt.ask("Select extension or All", choices=choices, default="All")
-        if choice != "All":
-            videos = [v for v in videos if os.path.splitext(v['name'])[1].lower() == choice]
-        return videos
-
-    def filter_videos_by_resolution(self, videos):
-        """Filter video list by resolution and FPS."""
-        resos = set()
-        fps_set = set()
-        for v in videos:
-            name = v['name']
-            # resolution patterns
-            m = re.search(r'(\d{3,4}x\d{3,4})', name)
-            if m:
-                resos.add(m.group(1))
-            # '360p' style
-            for m2 in re.findall(r'(\d{3,4}p)', name):
-                resos.add(m2)
-            # fps patterns
-            m3 = re.search(r'(\d{2,3})fps', name)
-            if m3:
-                fps_set.add(m3.group(1))
-        # filter by resolution
-        if resos:
-            console.print("\n[bold]Filter by resolution:[/bold]")
-            res_choices = sorted(resos) + ["All"]
-            choice = Prompt.ask("Select resolution or All", choices=res_choices, default="All")
-            if choice != "All":
-                videos = [v for v in videos if choice in v['name']]
-        # filter by fps
-        if fps_set:
-            console.print("\n[bold]Filter by FPS:[/bold]")
-            fps_choices = sorted(fps_set) + ["All"]
-            choice = Prompt.ask("Select FPS or All", choices=fps_choices, default="All")
-            if choice != "All":
-                videos = [v for v in videos if f"{choice}fps" in v['name']]
-        return videos
-
-    def filter_formats_by_type(self, formats):
-        """Filter format list by audio-only, video-only, or both."""
-        console.print("\n[bold]Format type filter:[/bold]")
-        console.print("[1] Audio only")
-        console.print("[2] Video only")
-        console.print("[3] Both")
-        choice = Prompt.ask("Select format type", choices=["1","2","3"], default="3")
-        if choice == '1': return [(c,d) for c,d in formats if 'audio only' in d]
-        if choice == '2': return [(c,d) for c,d in formats if 'video only' in d]
-        return formats
-
-    def filter_formats_by_extension(self, formats):
-        """Filter format list by file extension (first word in description)."""
-        exts = sorted({d.split()[0] for _,d in formats})
-        console.print("\n[bold]Extension filter:[/bold]")
-        console.print("All / " + ", ".join(exts))
-        choice = Prompt.ask("Select extension or All", choices=exts + ["All"], default="All")
-        if choice != 'All': formats = [(c,d) for c,d in formats if d.split()[0]==choice]
-        return formats
-
-    def filter_formats_by_resolution(self, formats):
-        """Filter format list by resolution and fps."""
-        resos = set(); fps_set = set()
-        for _,desc in formats:
-            # resolution patterns
-            m = re.search(r'(\d{3,4}x\d{3,4}|\d{3,4}p)', desc)
-            if m: resos.add(m.group(1))
-            m2 = re.search(r'(\d{2,3})fps', desc)
-            if m2: fps_set.add(m2.group(1))
-        if resos:
-            console.print("\n[bold]Resolution filter:[/bold] "+ ", ".join(sorted(resos)) + ", All")
-            choice = Prompt.ask("Select resolution or All", choices=sorted(resos)+["All"], default="All")
-            if choice!='All': formats=[(c,d) for c,d in formats if choice in d]
-        if fps_set:
-            console.print("\n[bold]FPS filter:[/bold] "+ ", ".join(sorted(fps_set)) + ", All")
-            choice = Prompt.ask("Select FPS or All", choices=sorted(fps_set)+["All"], default="All")
-            if choice!='All': formats=[(c,d) for c,d in formats if choice+'fps' in d]
-        return formats
-
-    def download_videos(self, urls):
-        """Download videos using yt-dlp into a Videos subdirectory, letting user pick format."""
-        videos_dir = os.path.join(self.download_dir, "Videos")
-        os.makedirs(videos_dir, exist_ok=True)
-        downloaded = []
-        for url in urls:
-            console.print(f"[magenta]Fetching available formats for: {url}[/magenta]")
-            proc = subprocess.run(["yt-dlp", "-F", url], capture_output=True, text=True)
-            output = proc.stdout or proc.stderr
-            all_formats = []
-            for line in output.splitlines():
-                parts = line.split(None, 3)
-                if parts and parts[0].isdigit():
-                    all_formats.append((parts[0], ' '.join(parts[1:])))
-            # hierarchical filtering submenus
-            fmts = self.filter_formats_by_type(all_formats)
-            fmts = self.filter_formats_by_extension(fmts)
-            fmts = self.filter_formats_by_resolution(fmts)
-            if not fmts:
-                console.print("[yellow]No formats match filters; showing all formats[/yellow]")
-                fmts = all_formats
-            # prompt from filtered list
-            table = Table(title="Available Formats", show_header=True, header_style="bold cyan", box=box.SIMPLE)
-            table.add_column("Code", style="yellow", width=6)
-            table.add_column("Description", style="white", max_width=60, overflow="fold")
-            for code,desc in fmts:
-                table.add_row(code, desc)
-            console.print(table)
-            choices = [code for code,_ in fmts]
-            fmt = Prompt.ask("Select format code to download", choices=choices)
-            console.print(f"[magenta]Downloading video: {url}[/magenta]")
-            cmd = ["yt-dlp", "-f", fmt, "-o", os.path.join(videos_dir, "%(title)s.%(ext)s"), url]
-            try:
-                process = subprocess.run(cmd, capture_output=True, text=True)
-                if process.returncode == 0:
-                    console.print(f"[green]Downloaded: {url}[green]")
-                    downloaded.append(url)
-                else:
-                    console.print(f"[red]Error downloading {url}: {process.stderr or process.stdout}[red]")
-            except Exception as e:
-                console.print(f"[red]Exception downloading {url}: {e}[red]")
-        return downloaded
-
-    def scan_existing_videos(self):
-        """Scan the Videos subdirectory for downloaded video files."""
-        videos_dir = os.path.join(self.download_dir, "Videos")
-        if not os.path.exists(videos_dir):
-            return []
-        items = []
-        for f in os.listdir(videos_dir):
-            full = os.path.join(videos_dir, f)
-            if os.path.isfile(full) and f.lower().endswith(('.mp4', '.mkv', '.webm', '.avi', '.mov', '.flv')):
-                size_mb = round(os.path.getsize(full) / (1024 * 1024), 2)
-                items.append({'name': f, 'path': full, 'size': size_mb})
-        return items
-
-    def play_video(self, video_path):
-        """Open a video file with the default system handler."""
-        console.print(f"[bold]Playing video:[/bold] {video_path}")
-        try:
-            if sys.platform == "win32":
-                os.startfile(video_path)
-            elif sys.platform == "darwin":
-                subprocess.run(["open", video_path])
-            else:
-                subprocess.run(["xdg-open", video_path])
-        except Exception as e:
-            console.print(f"[red]Error playing video: {e}[red]")
-
-    def show_video_menu(self):
-        """Sub-menu for downloading and managing videos."""
-        while True:
-            console.clear()
-            console.print("\n[bold magenta]Video Management Menu[bold magenta]")
-            console.print("[1] [cyan]Download videos from URLs[cyan]")
-            console.print("[2] [green]Manage existing videos[green]")
-            console.print("[3] [yellow]Return to main menu[yellow]")
-            choice = Prompt.ask("Enter your choice", choices=["1", "2", "3"], default="3")
-            if choice == "1":
-                urls = self.prompt_for_video_urls()
-                self.download_videos(urls)
-                self.wait_for_keypress()
-            elif choice == "2":
-                # scan and apply filters
-                videos = self.scan_existing_videos()
-                videos = self.filter_videos_by_type(videos)
-                videos = self.filter_videos_by_extension(videos)
-                videos = self.filter_videos_by_resolution(videos)
-                if not videos:
-                    console.print("[yellow]No videos match your criteria.[yellow]")
-                    self.wait_for_keypress()
-                    continue
-                while True:
-                    console.clear()
-                    console.print(f"\n[bold green]Found {len(videos)} videos:[bold green]")
-                    table = Table(title="Your Video Library", show_header=True, header_style="bold blue", box=box.ROUNDED)
-                    table.add_column("#", style="dim", width=4)
-                    table.add_column("Video", style="cyan")
-                    table.add_column("Size (MB)", justify="right")
-                    for i, vid in enumerate(videos):
-                        table.add_row(str(i+1), vid['name'], str(vid['size']))
-                    console.print(table)
-                    console.print("\n[bold]Video Management Options:[bold]")
-                    console.print("[1] [cyan]Play video(s)[cyan]")
-                    console.print("[2] [green]Burn selected videos[green]")
-                    console.print("[3] [red]Delete selected videos[red]")
-                    console.print("[4] [yellow]Return to video menu[yellow]")
-                    sub = Prompt.ask("Enter your choice", choices=["1", "2", "3", "4"], default="4")
-                    if sub == "1":
-                        nums = self.prompt_for_album_numbers(videos)
-                        for n in nums:
-                            self.play_video(videos[n-1]['path'])
-                        self.wait_for_keypress()
-                    elif sub == "2":
-                        nums = self.prompt_for_album_numbers(videos)
-                        selected = [videos[n-1]['path'] for n in nums]
-                        temp_dir = tempfile.mkdtemp()
-                        for p in selected:
-                            shutil.copy(p, temp_dir)
-                        self.burn_to_disc(temp_dir, self.dvd_drive)
-                        shutil.rmtree(temp_dir, ignore_errors=True)
-                        self.wait_for_keypress()
-                    elif sub == "3":
-                        nums = sorted(self.prompt_for_album_numbers(videos), reverse=True)
-                        for n in nums:
-                            try:
-                                os.remove(videos[n-1]['path'])
-                                console.print(f"[green]Deleted: {videos[n-1]['name']}[green]")
-                            except Exception as e:
-                                logger.error(f"Error deleting video {videos[n-1]['path']}: {e}")
-                                console.print(f"[red]Error deleting {videos[n-1]['name']}: {e}[red]")
-                        videos = self.scan_existing_videos()
-                        if not videos:
-                            console.print("[yellow]No more videos.[yellow]")
-                            console.print("Press any key to continue...")
-                            break
-                    elif sub == "4":
-                        break
-            elif choice == "3":
-                break
-
-    def manage_settings(self):
-        """Manage application settings including CDBurnerXP options."""
-        while True:
-            console.clear()
-            self.show_header()
-            table = Table(title="Application Settings", show_header=True, box=box.ROUNDED)
-            table.add_column("#", style="cyan", justify="right")
-            table.add_column("Setting", style="white")
-            table.add_column("Current Value", style="green")
-            table.add_row("1", "Download Directory", self.download_dir)
-            table.add_row("2", "Optical Drive", self.dvd_drive or "Auto-detect")
-            table.add_row("3", "Audio Format", self.audio_format)
-            table.add_row("4", "Audio Bitrate", self.bitrate)
-            table.add_row("5", "Maximum Threads", str(self.max_threads))
-            table.add_row("6", "CDBurnerXP Path", self.burn_settings.get("cdburnerxp_path"))
-            table.add_row("7", "Burning Speed", str(self.burn_settings.get("speed") or "Auto"))
-            table.add_row("8", "Verify After Burning", "Yes" if self.burn_settings.get("verify") else "No")
-            table.add_row("9", "Eject After Burning", "Yes" if self.burn_settings.get("eject") else "No")
-            console.print(table)
-            console.print()
-            choice = Prompt.ask(
-                "Select setting to change ([bold]B[/bold] to go back)",
-                choices=[str(i) for i in range(1,10)] + ["B","b"], default="B"
-            ).upper()
-            if choice == "B":
-                self.save_config()
-                break
-            elif choice == "1":
-                self.download_dir = Prompt.ask("Enter download directory", default=self.download_dir)
-            elif choice == "2":
-                self.dvd_drive = Prompt.ask("Enter drive letter (e.g. E:)", default=self.dvd_drive or "") or None
-            elif choice == "3":
-                self.audio_format = Prompt.ask("Enter audio format", default=self.audio_format)
-            elif choice == "4":
-                self.bitrate = Prompt.ask("Enter audio bitrate", default=self.bitrate)
-            elif choice == "5":
-                self.max_threads = IntPrompt.ask("Enter maximum download threads (1-10)", choices=range(1,11), default=self.max_threads)
-            elif choice == "6":
-                self.burn_settings["cdburnerxp_path"] = Prompt.ask(
-                    "Enter CDBurnerXP executable path", 
-                    default=self.burn_settings.get("cdburnerxp_path")
-                )
-            elif choice == "7":
-                speed = Prompt.ask("Enter burning speed (number or 'Auto')", default=str(self.burn_settings.get("speed") or "Auto"))
-                self.burn_settings["speed"] = None if speed.lower() == "auto" else speed
-            elif choice == "8":
-                self.burn_settings["verify"] = Confirm.ask("Verify disc after burning?", default=self.burn_settings.get("verify"))
-            elif choice == "9":
-                self.burn_settings["eject"] = Confirm.ask("Eject disc after burning?", default=self.burn_settings.get("eject"))
-
-    def about_app(self):
-        """Display information about the application."""
         console.clear()
         self.show_header()
         
-        # Create a panel with app information
-        about_text = (
-            "[bold]Spotify Album Downloader and Burner v{VERSION}[/bold]\n\n"
-            "A powerful command-line and menu-driven application that lets you search for songs or albums on Spotify, "
-            "display them with detailed information, download them using multithreaded performance, "
-            "and burn them directly to CD/DVD.\n\n"
-            "[bold cyan]🌟 Key Features:[/bold cyan]\n"
-            "- 🔍 Powerful Search: Find tracks and albums on Spotify with ease\n"
-            "- ⚡ Multithreaded Downloads: Download multiple tracks simultaneously\n"
-            "- 💿 Direct CD/DVD Burning: Burn your music to disc\n"
-            "- 🎵 Multiple Audio Formats: Choose from MP3, FLAC, OGG, and more\n"
-            "- 📊 Library Management: Organize, play, and manage your downloaded music\n"
-            "- 📹 Video Support: Download and manage videos from URLs\n"
-            "- ⚙️ Advanced Settings: Customize download location, audio quality, and more\n\n"
-            "[bold cyan]📋 Requirements:[/bold cyan]\n"
-            "- Python 3.6+\n"
-            "- Windows OS for native CD/DVD burning\n"
-            "- Spotify Developer API credentials\n\n"
-            "[bold cyan]🙏 Credits:[/bold cyan]\n"
-            "- Spotipy: Lightweight Python client for Spotify API\n"
-            "- SpotDL: Download music from Spotify\n"
-            "- Rich: Beautiful terminal formatting\n"
-            "- Colorama: Cross-platform colored terminal output\n\n"
-            "[bold cyan]📄 License:[/bold cyan]\n"
-            "This project is licensed under the MIT License."
-        ).format(VERSION=VERSION)
+        # Create a title with themed styling
+        title_text = "[bold cyan]SPOTIFY SEARCH[/bold cyan]"
+        console.print(self.center_text(title_text))
+        console.print(self.center_text(f"[{app_state['theme']['border']}]{'═' * 60}[/{app_state['theme']['border']}]"))
+        console.print("")
         
-        console.print(Panel(about_text, title="About", border_style="blue", width=80))
+        # Create a search query panel
+        query_panel = Panel(
+            f"[yellow]Searching for:[/yellow] [bold white]{query}[/bold white]",
+            title="Search Query",
+            title_align="left",
+            border_style="cyan",
+            box=app_state["theme"]["box"],
+            expand=False
+        )
+        console.print(self.center_text(query_panel))
+        console.print("")
         
-        # Wait for key press to return to main menu
-        self.wait_for_keypress()
-
-    def run(self, query=None):
-        """Run the application with optional command line query.
-        
-        Args:
-            query: Optional search query
-        
-        Returns:
-            int: Exit code (0 for success, 1 for error)
-        """
-        try:
-            # Show the app header
-            self.show_header()
-            
-            # Initialize Spotify API
+        if not self.spotify:
             if not self.initialize_spotify():
-                return 1
-                
-            if query:
-                # Direct mode with query - go straight to search
-                selection = self.search_music(query)
-                if not selection:
-                    return 1
-                    
-                # Display detailed information and get tracks
-                tracks = self.display_music_info(selection)
-                
-                # Get album URL for more efficient album downloads
-                album_url = None
-                if selection["type"] == "album":
-                    album_url = selection["item"]["external_urls"].get("spotify")
-                
-                # Confirm download
-                if not Confirm.ask("\nDo you want to download these tracks?"):
-                    return 0
-                
-                # Create album-specific directory for the download
-                output_dir = None
-                if selection["type"] == "album":
-                    album_name = selection["item"]["name"]
-                    artist_name = selection["item"]["artists"][0]["name"]
-                    album_dir = f"{artist_name} - {album_name}"
-                    output_dir = os.path.join(self.download_dir, album_dir)
-                
-                # Download tracks
-                if not self.download_tracks(tracks, output_dir, album_url):
-                    console.print("[red]Download failed or incomplete![red]")
-                    return 1
-                
-                # Enhance metadata
-                self.enhance_download_metadata(selection, output_dir)
-                
-                # Ask about burning
-                if Confirm.ask("\nDo you want to burn these tracks to CD/DVD?"):
-                    if not self.burn_to_disc(output_dir, self.dvd_drive):
-                        self.show_manual_burn_instructions(output_dir)
-                
-                console.print("\n[bold green]Process completed successfully![bold green]")
-                return 0
-            else:
-                # Interactive mode - show the main menu
-                self.show_main_menu()
-                return 0
-                
-        except KeyboardInterrupt:
-            console.print("\n[yellow]Operation cancelled by user.[yellow]")
-            return 0
-        except Exception as e:
-            logger.error(f"Unexpected error: {e}")
-            console.print(f"[bold red]An unexpected error occurred: {e}[bold red]")
-            return 1
-
-    def download_tracks(self, track_urls, output_dir=None, album_url=None):
-        """Download tracks from Spotify URLs using spotdl.
+                error_panel = Panel(
+                    "[bold red]Failed to initialize Spotify API connection.[/bold red]\n"
+                    "[yellow]Please check your internet connection and API credentials.[/yellow]",
+                    title="Connection Error",
+                    border_style="red",
+                    box=app_state["theme"]["box"],
+                    expand=False
+                )
+                console.print(self.center_text(error_panel))
+                return None
         
-        Args:
-            track_urls: List of Spotify track URLs to download
-            output_dir: Directory to save downloads (if None, uses default)
-            album_url: Optional album URL for more efficient downloading
-            
-        Returns:
-            bool: True if download was successful
-        """
-        if not track_urls:
-            console.print("[yellow]No tracks to download.[/yellow]")
-            return False
-            
-        # Create output directory if it doesn't exist
-        if output_dir:
-            os.makedirs(output_dir, exist_ok=True)
-        else:
-            output_dir = self.download_dir
-            os.makedirs(output_dir, exist_ok=True)
-        
-        logger.info(f"Downloading {len(track_urls)} tracks to {output_dir}")
-        console.print(f"\n[bold cyan]Downloading {len(track_urls)} tracks to:[/bold cyan]")
-        console.print(f"[bold]{output_dir}[/bold]")
-        
-        # If we have an album URL, use that for more efficient downloading
-        if album_url and len(track_urls) > 1:
-            try:
-                with Progress(
-                    SpinnerColumn(),
-                    TextColumn("[progress.description]{task.description}"),
-                    BarColumn(),
-                    TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-                    TimeRemainingColumn()
-                ) as progress:
-                    task = progress.add_task("[cyan]Downloading album...", total=100)
-                    
-                    # Build spotdl command
-                    cmd = [
-                        "spotdl",
-                        "--output", output_dir,
-                        "--format", self.audio_format,
-                        "--bitrate", self.bitrate,
-                        album_url
-                    ]
-                    
-                    # Start the process with Popen to allow monitoring
-                    process = subprocess.Popen(
-                        cmd,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        text=True,
-                        bufsize=1,
-                        universal_newlines=True
-                    )
-                    
-                    # Read output line by line and update progress
-                    while True:
-                        line = process.stdout.readline()
-                        if not line and process.poll() is not None:
-                            break
-                        if line:
-                            line = line.strip()
-                            logger.debug(line)
-                            
-                            # Estimate progress based on output
-                            if "Downloaded" in line and "%" in line:
-                                try:
-                                    # Try to parse progress from spotdl output
-                                    percent_str = line.split("%")[0].split(" ")[-1].strip()
-                                    percent = float(percent_str)
-                                    progress.update(task, completed=percent)
-                                except:
-                                    # If parsing fails, show indeterminate progress
-                                    progress.update(task, advance=1)
-                    
-                    # Get return code
-                    return_code = process.poll()
-                    
-                    # Finish progress bar
-                    progress.update(task, completed=100)
-                    
-                    if return_code == 0:
-                        console.print("[green]Album download completed successfully![/green]")
-                        return True
-                    else:
-                        console.print("[red]Error downloading album. Falling back to individual tracks...[/red]")
-                        # If album download fails, we'll fall through to individual download
-            except Exception as e:
-                logger.error(f"Error downloading album: {e}")
-                console.print(f"[yellow]Error downloading album: {e}[/yellow]")
-                console.print("[yellow]Falling back to individual track download...[/yellow]")
-                # Fall through to individual track download
-        
-        # Download individual tracks
         try:
+            # Display searching progress with a custom spinner
             with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-                TimeRemainingColumn()
+                SpinnerColumn("dots"),
+                TextColumn("[cyan]Searching Spotify...[/cyan]"),
+                BarColumn(bar_width=40, complete_style="green", finished_style="green"),
+                TextColumn("[yellow]Please wait[/yellow]"),
+                console=console,
+                transient=True,
             ) as progress:
-                # Create a task for overall progress tracking
-                task = progress.add_task("[cyan]Downloading tracks...", total=len(track_urls))
+                task = progress.add_task("search", total=100)
                 
-                # Use ThreadPoolExecutor to download tracks in parallel
-                download_futures = []
-                for url in track_urls:
-                    future = self.executor.submit(
-                        self._download_single_track,
-                        url,
-                        output_dir,
-                        progress
-                    )
-                    download_futures.append(future)
+                # Update progress while searching
+                progress.update(task, advance=30)
+                track_results = self.spotify.search(query, limit=5, type='track')
+                progress.update(task, advance=35)
+                album_results = self.spotify.search(query, limit=5, type='album')
+                progress.update(task, advance=35)
                 
-                # Wait for all downloads to complete
-                successful_downloads = 0
-                for future in download_futures:
-                    try:
-                        if future.result():
-                            successful_downloads += 1
-                        progress.update(task, advance=1)
-                    except Exception as e:
-                        logger.error(f"Error in download thread: {e}")
-                        progress.update(task, advance=1)
-                
-                # Report results
-                if successful_downloads == len(track_urls):
-                    console.print(f"[green]All {successful_downloads} tracks downloaded successfully![/green]")
-                    return True
-                elif successful_downloads > 0:
-                    console.print(f"[yellow]Downloaded {successful_downloads} of {len(track_urls)} tracks.[/yellow]")
-                    return True  # Still return True if some tracks were downloaded
-                else:
-                    console.print("[red]Failed to download any tracks.[/red]")
-                    return False
-        except Exception as e:
-            logger.error(f"Error downloading tracks: {e}")
-            console.print(f"[bold red]Error downloading tracks: {e}[/bold red]")
-            return False
-
-    def _download_single_track(self, url, output_dir, progress=None):
-        """Download a single track using spotdl.
-        
-        Args:
-            url: Spotify track URL
-            output_dir: Output directory
-            progress: Optional progress display object
+            # Process results
+            tracks = track_results.get('tracks', {}).get('items', [])
+            albums = album_results.get('albums', {}).get('items', [])
             
-        Returns:
-            bool: True if download was successful
-        """
-        task_id = None
-        if progress:
-            task_id = progress.add_task(f"[green]Track: {url.split('/')[-1]}", total=100)
-        
-        try:
-            # Build command
-            cmd = [
-                "spotdl",
-                "--output", output_dir,
-                "--format", self.audio_format,
-                "--bitrate", self.bitrate,
-                url
-            ]
-            
-            # Run the command
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                universal_newlines=True
+            if not tracks and not albums:
+                # No results panel with suggestions
+                no_results_panel = Panel(
+                    "[bold yellow]No results found for your search.[/bold yellow]\n\n"
+                    "[white]Suggestions:[/white]\n"
+                    "• Check for spelling mistakes\n"
+                    "• Try using fewer or different keywords\n"
+                    "• Try searching by artist name or album title only",
+                    title="No Results",
+                    border_style="yellow",
+                    box=app_state["theme"]["box"],
+                    expand=False
+                )
+                console.print(self.center_text(no_results_panel))
+                return None
+                
+            # Create results table with alternating row styles
+            table = Table(
+                title="Search Results", 
+                box=app_state["theme"]["box"], 
+                title_style="bold cyan",
+                header_style="bold",
+                border_style=app_state["theme"]["border"],
+                row_styles=["", "dim"],
+                highlight=True,
+                width=90,
+                expand=False
             )
             
-            # Read output and update progress
-            while True:
-                line = process.stdout.readline()
-                if not line and process.poll() is not None:
-                    break
-                if line and task_id is not None:
-                    line = line.strip()
-                    logger.debug(line)
-                    
-                    # Update progress based on output
-                    if "Downloaded" in line and "%" in line:
-                        try:
-                            percent_str = line.split("%")[0].split(" ")[-1].strip()
-                            percent = float(percent_str)
-                            progress.update(task_id, completed=percent)
-                        except:
-                            # If parsing fails, show indeterminate progress
-                            progress.update(task_id, advance=2)
+            table.add_column("#", style="cyan", justify="right", width=3)
+            table.add_column("Type", style="green", width=10)
+            table.add_column("Title", style="white")
+            table.add_column("Artist", style="yellow")
+            table.add_column("Duration/Tracks", style="magenta", justify="right", width=15)
             
-            # Get return code
-            return_code = process.poll()
+            # Add tracks to table with icons
+            result_items = []
+            idx = 1
             
-            # Complete the progress
-            if task_id is not None:
-                progress.update(task_id, completed=100)
-            
-            if return_code == 0:
-                return True
-            else:
-                return False
+            # Add tracks with 🎵 icon
+            for track in tracks[:5]:
+                duration_ms = track.get('duration_ms', 0)
+                duration_str = self.format_duration(duration_ms)
+                artists = ", ".join([artist['name'] for artist in track.get('artists', [])])
                 
+                table.add_row(
+                    str(idx),
+                    "🎵 Track",
+                    track.get('name', 'Unknown'),
+                    artists,
+                    duration_str
+                )
+                result_items.append({"type": "track", "item": track})
+                idx += 1
+                
+            # Add albums with 💿 icon
+            for album in albums[:5]:
+                album_type = album.get('album_type', 'Album').capitalize()
+                artists = ", ".join([artist['name'] for artist in album.get('artists', [])])
+                total_tracks = album.get('total_tracks', 0)
+                
+                table.add_row(
+                    str(idx),
+                    f"💿 {album_type}",
+                    album.get('name', 'Unknown'),
+                    artists,
+                    f"{total_tracks} tracks"
+                )
+                result_items.append({"type": "album", "item": album})
+                idx += 1
+                
+            # Wrap results table in a panel
+            results_panel = Panel(
+                table,
+                border_style=app_state["theme"]["border"],
+                box=app_state["theme"]["box"],
+                padding=(1, 2),
+                expand=False
+            )
+            console.print(self.center_text(results_panel))
+            console.print("")
+            
+            # Instructions panel for selection
+            instruction_panel = Panel(
+                "Select a number to view details, or [bold]C[/bold] to cancel and return to menu",
+                border_style="blue",
+                box=box.ROUNDED,
+                expand=False
+            )
+            console.print(self.center_text(instruction_panel))
+            
+            # Center the prompt and make it more visible
+            console.print("")
+            console.print(self.center_text("[white]Your selection:[/white]"))
+            
+            # Centralize the input prompt
+            selection = Prompt.ask(
+                self.center_text(""),
+                choices=[str(i) for i in range(1, len(result_items) + 1)] + ["C", "c"],
+                default="1"
+            )
+            
+            if selection.upper() == "C":
+                return None
+                
+            selected_idx = int(selection) - 1
+            return result_items[selected_idx]
+            
         except Exception as e:
-            logger.error(f"Error downloading track {url}: {e}")
-            if task_id is not None:
-                progress.update(task_id, description=f"[red]Failed: {url.split('/')[-1]}")
-            return False
+            logger.error(f"Error searching music: {e}")
+            error_panel = Panel(
+                f"[bold red]Error while searching:[/bold red]\n[white]{str(e)}[/white]",
+                title="Search Error",
+                border_style="red",
+                box=app_state["theme"]["box"],
+                expand=False
+            )
+            console.print(self.center_text(error_panel))
+            return None
 
 def main():
     """Main entry point."""
@@ -1729,3 +919,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+```

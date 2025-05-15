@@ -225,3 +225,28 @@ spotdl: error: argument --bitrate: invalid choice: 'best' (choose from 'auto', '
 2025-04-25 20:00:34,396 - spotify_burner - INFO - Deleted album: C:\Users\pppum\Music\SpotifyDownloads\Arden Jones - age tape 0
 2025-04-25 20:00:34,398 - spotify_burner - INFO - Found 0 albums in C:\Users\pppum\Music\SpotifyDownloads
 2025-04-25 20:00:37,706 - spotify_burner - INFO - Found 0 albums in C:\Users\pppum\Music\SpotifyDownloads
+2025-04-25 21:21:35,179 - spotify_burner - INFO - Applied theme: dark
+2025-04-25 21:21:35,670 - spotify_burner - INFO - Spotify API connection successful
+2025-04-25 21:23:11,360 - spotify_burner - INFO - Applied theme: dark
+2025-04-25 21:23:11,601 - spotify_burner - INFO - Spotify API connection successful
+2025-04-25 21:23:28,906 - spotify_burner - INFO - Applied theme: dark
+2025-04-25 21:23:29,151 - spotify_burner - INFO - Spotify API connection successful
+2025-04-25 21:54:02,414 - spotify_burner - INFO - Applied theme: dark
+2025-04-25 21:54:02,692 - spotify_burner - INFO - Spotify API connection successful
+2025-04-25 23:33:13,688 - spotify_burner - INFO - Applied theme: dark
+2025-04-26 22:36:07,698 - spotify_burner - INFO - Applied theme: dark
+2025-04-26 22:44:56,742 - spotify_burner - INFO - Applied theme: dark
+2025-04-26 22:44:57,039 - spotify_burner - INFO - Spotify API connection successful
+2025-04-26 23:38:23,538 - spotify_burner - INFO - Applied theme: dark
+2025-04-26 23:38:23,781 - spotify_burner - INFO - Spotify API connection successful
+2025-04-27 00:20:10,125 - spotify_burner - INFO - Applied theme: dark
+2025-04-27 00:20:10,521 - spotify_burner - INFO - Spotify API connection successful
+2025-04-27 00:41:42,444 - spotify_burner - INFO - Applied theme: dark
+2025-04-27 00:41:42,778 - spotify_burner - INFO - Spotify API connection successful
+2025-04-27 00:41:42,782 - spotify_burner - ERROR - Unexpected error: Segment.__new__() got an unexpected keyword argument 'bold'
+2025-04-27 00:54:34,812 - spotify_burner - INFO - Applied theme: dark
+2025-04-27 00:54:35,072 - spotify_burner - INFO - Spotify API connection successful
+2025-05-15 08:18:34,918 - spotify_burner - INFO - Applied theme: dark
+2025-05-15 08:18:35,174 - spotify_burner - INFO - Spotify API connection successful
+2025-05-15 14:20:05,782 - spotify_burner - INFO - Applied theme: dark
+2025-05-15 14:20:06,053 - spotify_burner - INFO - Spotify API connection successful
