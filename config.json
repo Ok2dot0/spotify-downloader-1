@@ -1,5 +1,5 @@
 {
-    "download_dir": "${SPOTIFY_DOWNLOAD_DIR}",
+    "download_dir": "C:\\path\\to\\download\\directory",
     "dvd_drive": "${DVD_DRIVE}",
     "max_threads": "${MAX_THREADS}",
     "audio_format": "${AUDIO_FORMAT}",
@@ -7,7 +7,7 @@
     "theme": "dark",
     "burn_method": "windows_native",
     "burn_settings": {
-        "cdburnerxp_path": "${CDBURNERXP_PATH}",
+        "cdburnerxp_path": "C:\\Program Files\\CDBurnerXP\\cdbxpcmd.exe",
         "speed": "MAX",
         "verify": true,
         "eject": true,

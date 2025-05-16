@@ -1546,6 +1546,85 @@ class SpotifyBurner:
                     console.print("[red]Invalid audio bitrate. Please enter a valid bitrate.[/red]")
                 self.wait_for_keypress()
 
+    def create_executable(self):
+        """Create a single executable file for Windows using PyInstaller."""
+        try:
+            console.print("[cyan]Creating executable using PyInstaller...[/cyan]")
+            subprocess.run(["pyinstaller", "--onefile", "spotify_burner.py"], check=True)
+            console.print("[green]Executable created successfully![/green]")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error creating executable: {e}")
+            console.print(f"[bold red]Error creating executable: {e}[/bold red]")
+
+    def setup_environment(self):
+        """Automate environment setup by creating a script to set up environment variables in the .env file."""
+        try:
+            console.print("[cyan]Setting up environment variables...[/cyan]")
+            env_content = (
+                "SPOTIPY_CLIENT_ID=your_spotify_client_id_here\n"
+                "SPOTIPY_CLIENT_SECRET=your_spotify_client_secret_here\n"
+                "SPOTIFY_DOWNLOAD_DIR=C:\\path\\to\\download\\directory\n"
+                "CDBURNERXP_PATH=C:\\path\\to\\cdburnerxp\n"
+                "DVD_DRIVE=E:\n"
+                "MAX_THREADS=3\n"
+                "AUDIO_FORMAT=mp3\n"
+                "AUDIO_BITRATE=320k\n"
+                "LOG_LEVEL=INFO\n"
+                "SAVE_ALBUM_ART=True\n"
+                "EMBED_LYRICS=False\n"
+                "OVERWRITE_METADATA=True\n"
+            )
+            with open(".env", "w") as f:
+                f.write(env_content)
+            console.print("[green]Environment variables set up successfully![/green]")
+        except Exception as e:
+            logger.error(f"Error setting up environment variables: {e}")
+            console.print(f"[bold red]Error setting up environment variables: {e}[/bold red]")
+
+    def setup_wizard(self):
+        """Provide a setup wizard that guides users through the initial configuration and setup process."""
+        console.print("[cyan]Welcome to the Spotify Album Downloader and Burner Setup Wizard![/cyan]")
+        console.print("[cyan]This wizard will guide you through the initial configuration and setup process.[/cyan]")
+
+        # Prompt for Spotify API credentials
+        client_id = Prompt.ask("Enter your Spotify Client ID")
+        client_secret = Prompt.ask("Enter your Spotify Client Secret")
+
+        # Prompt for download directory
+        download_dir = Prompt.ask("Enter the download directory", default="C:\\path\\to\\download\\directory")
+
+        # Prompt for CD/DVD drive letter
+        dvd_drive = Prompt.ask("Enter the CD/DVD drive letter", default="E:")
+
+        # Prompt for maximum download threads
+        max_threads = IntPrompt.ask("Enter the maximum number of download threads (1-10)", default=3)
+
+        # Prompt for audio format
+        audio_format = Prompt.ask("Enter the audio format (mp3, flac, ogg, m4a, opus, wav)", default="mp3")
+
+        # Prompt for audio bitrate
+        audio_bitrate = Prompt.ask("Enter the audio bitrate (128k, 192k, 256k, 320k, best)", default="320k")
+
+        # Save the configuration to the .env file
+        env_content = (
+            f"SPOTIPY_CLIENT_ID={client_id}\n"
+            f"SPOTIPY_CLIENT_SECRET={client_secret}\n"
+            f"SPOTIFY_DOWNLOAD_DIR={download_dir}\n"
+            f"CDBURNERXP_PATH=C:\\path\\to\\cdburnerxp\n"
+            f"DVD_DRIVE={dvd_drive}\n"
+            f"MAX_THREADS={max_threads}\n"
+            f"AUDIO_FORMAT={audio_format}\n"
+            f"AUDIO_BITRATE={audio_bitrate}\n"
+            "LOG_LEVEL=INFO\n"
+            "SAVE_ALBUM_ART=True\n"
+            "EMBED_LYRICS=False\n"
+            "OVERWRITE_METADATA=True\n"
+        )
+        with open(".env", "w") as f:
+            f.write(env_content)
+
+        console.print("[green]Setup completed successfully![/green]")
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(

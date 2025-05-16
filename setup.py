@@ -74,8 +74,6 @@ setup(
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Operating System :: Microsoft :: Windows",
-        "Operating System :: POSIX :: Linux",
-        "Operating System :: MacOS :: MacOS X",
         "Topic :: Multimedia :: Sound/Audio",
         "Topic :: Multimedia :: Video",
     ],

@@ -14,11 +14,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [windows-latest]
         python-version: ['3.7', '3.8', '3.9', '3.10']
         exclude:
-          # Exclude combinations that might be problematic
-          - os: macos-latest
+          - os: windows-latest
             python-version: '3.7'
 
     steps:
@@ -63,8 +62,7 @@ jobs:
 
   build-and-publish:
     needs: test
-    runs-on: ubuntu-latest
-    # Only run on tagged commits
+    runs-on: windows-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     
     steps:

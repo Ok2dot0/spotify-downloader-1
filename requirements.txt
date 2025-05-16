@@ -10,11 +10,6 @@ tqdm==4.66.1
 concurrent-log-handler==0.9.24
 yt-dlp>=2025.1.15,<2026.0.0  # Required for video downloads
 
-# Cross-platform dependencies
-pycdio==2.1.0
-pyudev==0.22.0
-dbus-python==1.2.16
-
 # Development dependencies
 pytest==7.4.0
 pytest-cov==4.1.0
