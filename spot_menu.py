@@ -7,6 +7,7 @@ A simplified version of the menu display functionality
 
 import os
 import sys
+import json
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
@@ -21,6 +22,7 @@ VERSION = "2.0.0"
 class SpotifyBurnerMenu:
     def __init__(self):
         self.terminal_width = console.width
+        self.config = self.load_config()
     
     def center_text(self, text_or_renderable, width=None):
         """Center text or a rich renderable in the terminal."""
@@ -99,10 +101,51 @@ class SpotifyBurnerMenu:
             console.print("[green]Thank you for using Spotify Album Downloader and Burner![/green]")
             return False
 
+        if choice == "5":
+            self.about_app()
+            return True
+
         # For demo purposes, just display what was selected
         console.print(f"[cyan]You selected option {choice}[/cyan]")
         input("Press Enter to continue...")
         return True
+
+    def about_app(self):
+        """Display information about the application."""
+        console.clear()
+        self.show_header()
+        
+        border_color = "dark_red"
+        
+        # Create a panel with app information
+        about_text = self.config.get("about_message", "Welcome to Spotify Album Downloader and Burner! Customize this message in config.json.")
+        
+        # Create a centered panel with a decorative border
+        about_panel = Panel(
+            about_text, 
+            title="About", 
+            border_style=border_color, 
+            box=box.DOUBLE, 
+            width=90
+        )
+        
+        # Center the panel
+        console.print(self.center_text(about_panel))
+        
+        # Wait for key press to return to main menu
+        input("Press Enter to return to the main menu...")
+
+    def load_config(self):
+        """Load configuration from config file or create default."""
+        config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+        if os.path.exists(config_file):
+            try:
+                with open(config_file, 'r') as f:
+                    return json.load(f)
+            except json.JSONDecodeError:
+                console.print("[bold red]Error: Config file is corrupted. Using defaults.[/bold red]")
+                return {}
+        return {}
 
 def main():
     app = SpotifyBurnerMenu()

@@ -1,13 +1,13 @@
 {
-    "download_dir": "C:\\Users\\pppum\\Music\\SpotifyDownloads",
-    "dvd_drive": "F:",
-    "max_threads": 3,
-    "audio_format": "mp3",
-    "bitrate": "best",
+    "download_dir": "${SPOTIFY_DOWNLOAD_DIR}",
+    "dvd_drive": "${DVD_DRIVE}",
+    "max_threads": "${MAX_THREADS}",
+    "audio_format": "${AUDIO_FORMAT}",
+    "bitrate": "${AUDIO_BITRATE}",
     "theme": "dark",
     "burn_method": "windows_native",
     "burn_settings": {
-        "cdburnerxp_path": "C:\\Program Files\\CDBurnerXP\\cdbxpcmd.exe",
+        "cdburnerxp_path": "${CDBURNERXP_PATH}",
         "speed": "MAX",
         "verify": true,
         "eject": true,
@@ -15,8 +15,9 @@
         "filesystem": "ISO9660 + Joliet"
     },
     "metadata_settings": {
-        "save_album_art": true,
-        "embed_lyrics": false,
-        "overwrite_metadata": true
-    }
+        "save_album_art": "${SAVE_ALBUM_ART}",
+        "embed_lyrics": "${EMBED_LYRICS}",
+        "overwrite_metadata": "${OVERWRITE_METADATA}"
+    },
+    "about_message": "Welcome to Spotify Album Downloader and Burner! Customize this message in config.json."
 }

@@ -1,18 +1,19 @@
 # Production dependencies
-spotipy==2.23.0
-spotdl==4.2.1
+spotipy>=2.24.0
+spotdl==4.2.11
 colorama==0.4.6
-rich==13.5.2
-requests==2.31.0
+rich>=13.9.4,<14.0.0
+requests>=2.32.3
 Pillow==10.0.1
 python-dotenv==1.0.0
 tqdm==4.66.1
 concurrent-log-handler==0.9.24
-yt-dlp==2023.7.6  # Required for video downloads
+yt-dlp>=2025.1.15,<2026.0.0  # Required for video downloads
 
-# Windows-specific dependencies
-pywin32>=305; platform_system=="Windows"
-comtypes>=1.2.0; platform_system=="Windows"
+# Cross-platform dependencies
+pycdio==2.1.0
+pyudev==0.22.0
+dbus-python==1.2.16
 
 # Development dependencies
 pytest==7.4.0
