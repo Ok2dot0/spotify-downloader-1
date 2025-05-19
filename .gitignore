@@ -4,6 +4,7 @@ spotify_burner.log
 
 # Python
 __pycache__/
+*.pyc
 *.py[cod]
 *$py.class
 *.so
@@ -46,3 +47,4 @@ coverage.xml
 # OS specific
 .DS_Store
 Thumbs.db
+.cache

@@ -4,7 +4,7 @@
     "max_threads": 3,
     "audio_format": "mp3",
     "bitrate": "best",
-    "theme": "dark",
+    "theme": "light",
     "burn_method": "windows_native",
     "burn_settings": {
         "cdburnerxp_path": "C:\\Program Files\\CDBurnerXP\\cdbxpcmd.exe",

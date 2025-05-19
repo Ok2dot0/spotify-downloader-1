@@ -15,30 +15,68 @@ import tempfile
 import shutil
 import time
 import re
+import platform
 import requests
 import subprocess
-import msvcrt  # For Windows key detection
-import dotenv
 import threading
 import queue
 import logging
+import importlib.util
+import signal
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Union, Any
 from functools import partial
 from concurrent.futures import ThreadPoolExecutor
-from colorama import init, Fore, Back, Style
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
-from rich.layout import Layout
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
-from rich.prompt import Confirm, Prompt, IntPrompt
-from rich import box
-import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials
-from unittest.mock import MagicMock  # For tests
+import webbrowser
+import shutil
 
-# Import pywin32 for IMAPI2 only on Windows
-if sys.platform == "win32" or sys.platform == "win64":
+# Check if packages are installed before importing
+try:
+    import dotenv
+except ImportError:
+    sys.exit("Required package 'python-dotenv' is missing. Please install it with: pip install python-dotenv")
+
+try:
+    from colorama import init, Fore, Back, Style
+    from rich.console import Console
+    from rich.table import Table
+    from rich.panel import Panel
+    from rich.layout import Layout
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
+    from rich.prompt import Confirm, Prompt, IntPrompt
+    from rich import box
+except ImportError:
+    sys.exit("Required packages are missing. Please install them with: pip install colorama rich")
+
+try:
+    import spotipy
+    from spotipy.oauth2 import SpotifyClientCredentials
+except ImportError:
+    sys.exit("Required package 'spotipy' is missing. Please install it with: pip install spotipy")
+
+# Define platform constants for better readability
+IS_WINDOWS = sys.platform.startswith('win')
+IS_MACOS = sys.platform == 'darwin'
+IS_LINUX = sys.platform.startswith('linux')
+
+# Import platform-specific modules
+if IS_WINDOWS:
     try:
+        import msvcrt  # For Windows key detection
+    except ImportError:
+        print("Warning: msvcrt module not available on this Windows system")
+else:
+    try:
+        import select  # For Unix key detection
+        import termios, tty
+    except ImportError:
+        print("Warning: Terminal control modules not available on this system")
+
+# Import Windows-specific modules for disc burning only on Windows
+WINDOWS_IMAPI_AVAILABLE = False
+if IS_WINDOWS:
+    try:
+        # Only attempt to import these if we're on Windows
         import win32com.client
         import pythoncom
         from win32com.client import constants
@@ -47,23 +85,80 @@ if sys.platform == "win32" or sys.platform == "win64":
         WINDOWS_IMAPI_AVAILABLE = True
     except ImportError:
         WINDOWS_IMAPI_AVAILABLE = False
-else:
-    WINDOWS_IMAPI_AVAILABLE = False
+        print("Warning: Windows COM libraries (pywin32/comtypes) not available. CD/DVD burning will be limited.")
+        print("To enable full burning capabilities, install: pip install pywin32 comtypes")
 
 # Initialize colorama for cross-platform colored terminal output
 init()
-console = Console()
+console = Console(width=None)  # width=None makes it auto-detect terminal width
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("spotify_burner.log"),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger("spotify_burner")
+# Define minimum required terminal dimensions
+MIN_TERMINAL_WIDTH = 100
+MIN_TERMINAL_HEIGHT = 30
+
+# Configure logging with proper paths
+def setup_logging():
+    """Set up logging with proper file paths and rotation"""
+    try:
+        # Create log directory in user's home folder for better portability
+        log_dir = os.path.join(os.path.expanduser("~"), ".spotify_burner", "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, "spotify_burner.log")
+        
+        # Get log level from environment or default to INFO
+        log_level_name = os.environ.get("LOG_LEVEL", "INFO")
+        try:
+            log_level = getattr(logging, log_level_name.upper(), logging.INFO)
+        except AttributeError:
+            log_level = logging.INFO
+            print(f"Warning: Invalid log level '{log_level_name}', using INFO")
+        
+        # Configure logging with rotation to prevent log files from growing too large
+        logger = logging.getLogger("spotify_burner")
+        logger.setLevel(log_level)
+        
+        # Clear any existing handlers to prevent duplicates
+        if logger.handlers:
+            for handler in logger.handlers[:]:
+                logger.removeHandler(handler)
+        
+        # Add a rotating file handler
+        try:
+            # Try to use a rotating handler if available
+            try:
+                from logging.handlers import RotatingFileHandler
+                file_handler = RotatingFileHandler(
+                    log_path, maxBytes=10*1024*1024, backupCount=5, encoding='utf-8'
+                )
+            except ImportError:
+                # Fall back to standard file handler if rotating handler is not available
+                file_handler = logging.FileHandler(log_path, encoding='utf-8')
+                
+            file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            file_handler.setFormatter(file_formatter)
+            logger.addHandler(file_handler)
+        except (PermissionError, OSError) as e:
+            print(f"Warning: Could not set up file logging: {e}")
+            
+        # Add console handler for warnings and errors
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.WARNING)  # Only show warnings and errors in console
+        console_formatter = logging.Formatter('%(levelname)s: %(message)s')
+        console_handler.setFormatter(console_formatter)
+        logger.addHandler(console_handler)
+        
+        return logger
+    except Exception as e:
+        # Set up a minimal fallback logger if anything goes wrong
+        print(f"Error setting up logging: {e}")
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+        return logging.getLogger("spotify_burner")
+
+# Initialize logger
+logger = setup_logging()
 
 # Load environment variables from .env file
 dotenv.load_dotenv()
@@ -77,8 +172,329 @@ VERSION = "2.0.0"  # Updated version number
 app_state = {
     "download_queue": queue.Queue(),
     "current_downloads": 0,
-    "max_concurrent_downloads": 3  # Default concurrent downloads
+    "max_concurrent_downloads": 3,  # Default concurrent downloads
+    "terminal_size": {"width": 0, "height": 0}  # Will store terminal dimensions
 }
+
+def notify_terminal_resize_issues():
+    """Display notification about terminal size issues if detected during runtime."""
+    width, height = app_state["terminal_size"]["width"], app_state["terminal_size"]["height"]
+    
+    if width < MIN_TERMINAL_WIDTH or height < MIN_TERMINAL_HEIGHT:
+        # Save current cursor position
+        if not IS_WINDOWS:
+            print("\033[s", end="", flush=True)  # Save cursor position
+        
+        # Clear notification area (last line of terminal)
+        print(f"\033[{height};0H\033[K", end="", flush=True)  # Move to last line and clear
+        
+        # Display warning with red background on the bottom line
+        print(f"\033[{height};0H\033[41;97m Terminal size too small: {width}x{height}. " +
+              f"Minimum required: {MIN_TERMINAL_WIDTH}x{MIN_TERMINAL_HEIGHT} \033[0m", 
+              end="", flush=True)
+        
+        # Restore cursor position
+        if not IS_WINDOWS:
+            print("\033[u", end="", flush=True)  # Restore cursor position
+            
+        return False
+    return True
+
+def check_terminal_size():
+    """Check if the terminal has adequate dimensions for the application.
+    Updates app_state with current dimensions and returns status.
+    
+    Returns:
+        bool: True if terminal size is adequate, False otherwise
+    """
+    # Get current terminal size
+    terminal_width, terminal_height = shutil.get_terminal_size((80, 24))  # Default fallback (80x24)
+    
+    # Update application state with current dimensions
+    app_state["terminal_size"]["width"] = terminal_width
+    app_state["terminal_size"]["height"] = terminal_height
+    
+    # Log the terminal size when it changes
+    if hasattr(check_terminal_size, 'last_width') and \
+       (check_terminal_size.last_width != terminal_width or 
+        check_terminal_size.last_height != terminal_height):
+        logger.info(f"Terminal resized to {terminal_width}x{terminal_height}")
+    
+    # Store last dimensions to detect changes
+    check_terminal_size.last_width = terminal_width
+    check_terminal_size.last_height = terminal_height
+    
+    # Check against minimum requirements
+    if terminal_width < MIN_TERMINAL_WIDTH or terminal_height < MIN_TERMINAL_HEIGHT:
+        return False
+    return True
+
+def is_very_small_terminal():
+    """Check if the terminal is in a very constrained state (below minimum requirements).
+    
+    Returns:
+        bool: True if terminal is below minimum size, False otherwise
+    """
+    width = app_state["terminal_size"]["width"]
+    height = app_state["terminal_size"]["height"]
+    return width < MIN_TERMINAL_WIDTH or height < MIN_TERMINAL_HEIGHT
+
+def is_compact_terminal():
+    """Check if the terminal is in a size that requires compact UI.
+    
+    Returns:
+        bool: True if terminal should use compact UI, False otherwise
+    """
+    width = app_state["terminal_size"]["width"]
+    height = app_state["terminal_size"]["height"]
+    return width < MIN_TERMINAL_WIDTH + 20 or height < MIN_TERMINAL_HEIGHT + 5
+
+def get_terminal_class():
+    """Get a classification of the current terminal size.
+    
+    Returns:
+        str: Size classification - 'very_small', 'compact', 'standard', or 'large'
+    """
+    width = app_state["terminal_size"]["width"]
+    height = app_state["terminal_size"]["height"]
+    
+    if width < MIN_TERMINAL_WIDTH or height < MIN_TERMINAL_HEIGHT:
+        return 'very_small'
+    elif width < MIN_TERMINAL_WIDTH + 20 or height < MIN_TERMINAL_HEIGHT + 5:
+        return 'compact'
+    elif width >= 120 and height >= 40:
+        return 'large'
+    else:
+        return 'standard'
+
+def get_adaptive_width(component_type="panel", min_width=70):
+    """Get width adjusted to terminal size.
+    
+    Args:
+        component_type: Type of UI component ("panel", "table", "header", etc.)
+        min_width: Minimum width to return (default 70)
+    
+    Returns:
+        int: Width adjusted to the current terminal size
+    """
+    terminal_width = app_state["terminal_size"]["width"]
+    # Return default if terminal width is not yet initialized
+    if terminal_width <= 0:
+        return 100
+    
+    # Get terminal size classification
+    terminal_class = get_terminal_class()
+    
+    # Special handling for different component types
+    if component_type == "panel":
+        if terminal_class == 'large':
+            return terminal_width - 10  # Larger margins for big terminals
+        elif terminal_class == 'standard':
+            return terminal_width - 5   # Medium margins
+        elif terminal_class == 'compact':
+            return terminal_width - 3   # Minimal margins
+        else:  # very_small
+            return max(min_width, terminal_width - 2)  # Almost full width
+    
+    elif component_type == "table":
+        # Tables should be slightly smaller than panels
+        if terminal_class == 'large':
+            return terminal_width - 12
+        elif terminal_class == 'standard':
+            return terminal_width - 8
+        elif terminal_class == 'compact':
+            return terminal_width - 4
+        else:  # very_small
+            return max(min_width, terminal_width - 2)
+            
+    elif component_type == "header":
+        # Headers can use most of the terminal width
+        if terminal_class == 'very_small':
+            return max(min_width, terminal_width - 2)
+        else:
+            return max(min_width, terminal_width - 4)
+        
+    # Default
+    return max(min_width, terminal_width - 5)
+        
+def create_responsive_table(columns, show_header=True, title=None, box_style=None, border_style=None, compact_mode=None):
+    """Create a responsive table with appropriate widths based on terminal size.
+    
+    Args:
+        columns: List of column definitions, each should be a dict with keys:
+            - 'name': Column name (for header)
+            - 'style': Column style
+            - 'justify': Text justification ('left', 'center', 'right')
+            - 'width_ratio': Relative width ratio (optional)
+            - 'no_wrap': Whether to disable text wrapping (optional)
+            - 'min_width': Minimum column width (optional)
+            - 'hide_when_compact': Hide this column in compact view (optional)
+        show_header: Whether to show the table header
+        title: Optional table title
+        box_style: Box style for the table
+        border_style: Border style for the table
+        compact_mode: Force compact mode (True/False) or auto-detect if None
+        
+    Returns:
+        rich.table.Table: A configured responsive table
+    """
+    # Get theme settings if not specified
+    if box_style is None:
+        box_style = app_state["theme"]["box"] if "theme" in app_state else box.ROUNDED
+    if border_style is None:
+        border_style = app_state["theme"]["border"] if "theme" in app_state else "cyan"
+        
+    # Determine if we should use compact mode
+    if compact_mode is None:
+        terminal_class = get_terminal_class()
+        is_compact = terminal_class in ('very_small', 'compact')
+    else:
+        is_compact = compact_mode
+    
+    # Use simpler box style for compact mode
+    if is_compact and box_style != box.SIMPLE:
+        box_style = box.SIMPLE
+        
+    # Create the base table
+    table = Table(
+        show_header=show_header,
+        box=box_style,
+        border_style=border_style,
+        title=title,
+        title_style=f"bold {border_style}" if title else None,
+        title_justify="center",
+        width=get_adaptive_width("table")
+    )
+    
+    # Calculate available width for columns with ratio
+    available_width = get_adaptive_width("table")
+    terminal_class = get_terminal_class()
+    
+    # Calculate total ratio
+    total_ratio = sum(col.get('width_ratio', 1) 
+                   for col in columns 
+                   if 'width_ratio' in col and not (is_compact and col.get('hide_when_compact', False)))
+    
+    # Define minimum widths based on terminal size
+    min_widths = {
+        "icon": 2,
+        "number": 3 if terminal_class in ('standard', 'large') else 2,
+        "key": 5 if terminal_class in ('standard', 'large') else 3,
+        "duration": 8 if terminal_class == 'large' else 6 if terminal_class == 'standard' else 4,
+        "name": {
+            'large': 25,
+            'standard': 20,
+            'compact': 15,
+            'very_small': 12
+        }.get(terminal_class, 15),
+        "description": {
+            'large': 40,
+            'standard': 30,
+            'compact': 20,
+            'very_small': 15
+        }.get(terminal_class, 20),
+    }
+    
+    # Filter out columns that should be hidden in compact mode
+    filtered_columns = [col for col in columns if not (is_compact and col.get('hide_when_compact', False))]
+    
+    # Add columns with calculated widths
+    for col in filtered_columns:
+        col_name = col.get('name', '')
+        col_style = col.get('style', 'white')
+        col_justify = col.get('justify', 'left')
+        no_wrap = col.get('no_wrap', False)
+        
+        # Calculate width based on ratio or use fixed width
+        if 'width' in col:
+            width = col['width']
+        elif 'width_ratio' in col and total_ratio > 0:
+            # Calculate proportional width
+            ratio = col['width_ratio'] / total_ratio
+            width = int(available_width * ratio)
+            
+            # Apply minimum if specified
+            if 'min_width' in col:
+                width = max(width, col['min_width'])
+            elif 'type' in col and col['type'] in min_widths:
+                if isinstance(min_widths[col['type']], dict):
+                    min_width = min_widths[col['type']].get(terminal_class, 
+                                min_widths[col['type']].get('standard', 10))
+                    width = max(width, min_width)
+                else:
+                    width = max(width, min_widths[col['type']])
+        elif 'type' in col and col['type'] in min_widths:
+            if isinstance(min_widths[col['type']], dict):
+                width = min_widths[col['type']].get(terminal_class, 
+                            min_widths[col['type']].get('standard', 10))
+            else:
+                width = min_widths[col['type']]
+        else:
+            width = None
+            
+        table.add_column(
+            col_name, style=col_style, justify=col_justify, 
+            width=width, no_wrap=no_wrap
+        )
+        
+    return table
+
+def start_size_monitor():
+    """Start a background thread to periodically monitor terminal size changes.
+    This is used as a fallback for environments where signal handlers don't work.
+    
+    Returns:
+        threading.Thread: The monitoring thread
+    """
+    def monitor_terminal_size():
+        last_width, last_height = 0, 0
+        was_adequate_size = True  # Track if we previously had adequate size
+        
+        while not getattr(monitor_terminal_size, "stop", False):
+            try:
+                check_terminal_size()
+                width = app_state["terminal_size"]["width"]
+                height = app_state["terminal_size"]["height"]
+                
+                # Log size changes but avoid flooding logs
+                if width != last_width or height != last_height:
+                    logger.debug(f"Terminal size changed to {width}x{height}")
+                    
+                    # Check if size became inadequate
+                    is_adequate = width >= MIN_TERMINAL_WIDTH and height >= MIN_TERMINAL_HEIGHT
+                    
+                    # Show warning if size changed from adequate to inadequate
+                    if was_adequate_size and not is_adequate:
+                        notify_terminal_resize_issues()
+                        
+                    # Update status tracking
+                    was_adequate_size = is_adequate
+                    last_width, last_height = width, height
+                    
+                # Sleep for a while to avoid burning CPU
+                time.sleep(1)
+            except Exception as e:
+                logger.error(f"Error in terminal size monitor: {e}")
+                time.sleep(5)  # Slow down if errors occur
+    
+    # Create and start the monitoring thread
+    monitor_thread = threading.Thread(
+        target=monitor_terminal_size,
+        name="TerminalSizeMonitor",
+        daemon=True  # Make thread exit when main program exits
+    )
+    monitor_thread.start()
+    
+    # Store stop flag with the thread for clean shutdown
+    def stop_monitor():
+        monitor_terminal_size.stop = True
+        
+    app_state["size_monitor"] = {
+        "thread": monitor_thread,
+        "stop": stop_monitor
+    }
+    
+    return monitor_thread
 
 class SpotifyBurner:
     def __init__(self):
@@ -116,6 +532,54 @@ class SpotifyBurner:
         
         # Initialize theme
         self.apply_theme(self.theme)
+        
+        # Hide cursor at startup
+        self.hide_cursor()
+        
+        # Start terminal size monitor
+        start_size_monitor()
+        
+        # Setup signal handlers for clean exit
+        self.setup_signal_handlers()
+        
+    def setup_signal_handlers(self):
+        """Set up signal handlers for clean exit and terminal resize."""
+        # Define signal handler function for termination signals
+        def signal_handler(sig, frame):
+            logger.info(f"Received signal {sig}, performing clean exit...")
+            self.show_cursor()  # Ensure cursor is visible
+            if hasattr(self, 'executor') and self.executor:
+                self.executor.shutdown(wait=False)
+            sys.exit(0)
+        
+        # Register terminal resize signal handler on Unix platforms
+        if not IS_WINDOWS and hasattr(signal, 'SIGWINCH'):
+            def resize_handler(sig, frame):
+                # Store previous dimensions for comparison
+                previous_width = app_state["terminal_size"]["width"]
+                previous_height = app_state["terminal_size"]["height"]
+                
+                # Update terminal dimensions when resize is detected
+                check_terminal_size()
+                new_width = app_state["terminal_size"]["width"]
+                new_height = app_state["terminal_size"]["height"]
+                
+                logger.debug(f"Terminal resize detected: {new_width}x{new_height}")
+                
+                # Show notification if size becomes inadequate
+                if (previous_width >= MIN_TERMINAL_WIDTH and new_width < MIN_TERMINAL_WIDTH) or \
+                   (previous_height >= MIN_TERMINAL_HEIGHT and new_height < MIN_TERMINAL_HEIGHT):
+                    notify_terminal_resize_issues()
+            
+            signal.signal(signal.SIGWINCH, resize_handler)
+        
+        # Register signal handlers if on a platform that supports them
+        if not IS_WINDOWS:  # Windows doesn't support all these signals
+            signal.signal(signal.SIGTERM, signal_handler)
+            signal.signal(signal.SIGHUP, signal_handler)
+        
+        # SIGINT (Ctrl+C) works on all platforms
+        signal.signal(signal.SIGINT, signal_handler)
         
     def load_config(self):
         """Load configuration from config file or create default."""
@@ -158,7 +622,7 @@ class SpotifyBurner:
         Sets the appropriate color scheme based on the selected theme.
         
         Args:
-            theme_name: Name of the theme to apply (default, dark, light)
+            theme_name: Name of the theme to apply (default, dark, light, modern, neon, spotify)
         """
         # Theme definitions
         themes = {
@@ -191,6 +655,36 @@ class SpotifyBurner:
                 "header_style": "bold magenta",
                 "border_style": "magenta",
                 "box_type": box.SQUARE
+            },
+            "modern": {
+                "main_color": "bright_blue",
+                "accent_color": "bright_cyan",
+                "warning_color": "gold1",
+                "error_color": "bright_red",
+                "success_color": "bright_green",
+                "header_style": "bold bright_blue",
+                "border_style": "bright_blue",
+                "box_type": box.ROUNDED
+            },
+            "neon": {
+                "main_color": "hot_pink",
+                "accent_color": "bright_cyan",
+                "warning_color": "bright_yellow",
+                "error_color": "bright_red",
+                "success_color": "bright_green",
+                "header_style": "bold hot_pink",
+                "border_style": "purple",
+                "box_type": box.DOUBLE
+            },
+            "spotify": {
+                "main_color": "green4",
+                "accent_color": "green1",
+                "warning_color": "yellow",
+                "error_color": "red",
+                "success_color": "green",
+                "header_style": "bold green",
+                "border_style": "green",
+                "box_type": box.ROUNDED
             }
         }
         
@@ -259,11 +753,12 @@ class SpotifyBurner:
             console.print(f"[bold red]Unexpected error: {e}[/bold red]")
             return False
 
-    def search_music(self, query):
+    def search_music(self, query, search_type=None):
         """Search for music on Spotify.
         
         Args:
             query: Search query string
+            search_type: Type of search ('song', 'album', 'playlist', or None for all)
             
         Returns:
             dict: Selected album or track info, or None if cancelled
@@ -272,20 +767,51 @@ class SpotifyBurner:
             console.print("[yellow]Search query is empty[/yellow]")
             return None
             
-        logger.info(f"Searching for: {query}")
+        logger.info(f"Searching for: {query} (Type: {search_type or 'all'})")
         console.print(f"\n[bold]Searching for:[/bold] {query}")
         
         try:
-            # Search for both albums and tracks
-            albums_result = self.spotify.search(query, type="album", limit=10)
-            tracks_result = self.spotify.search(query, type="track", limit=10)
+            albums = []
+            tracks = []
+            playlists = []
             
-            # Extract results
-            albums = albums_result["albums"]["items"] if "albums" in albums_result else []
-            tracks = tracks_result["tracks"]["items"] if "tracks" in tracks_result else []
+            # Determine which types to search based on search_type
+            if search_type == 'song' or search_type is None:
+                try:
+                    tracks_result = self.spotify.search(query, type="track", limit=10)
+                    tracks = tracks_result.get("tracks", {}).get("items", []) if tracks_result else []
+                except Exception as e:
+                    logger.error(f"Error searching for tracks: {e}")
+                    console.print(f"[yellow]Error searching for tracks: {e}[/yellow]")
+                    tracks = []
+                
+            if search_type == 'album' or search_type is None:
+                try:
+                    albums_result = self.spotify.search(query, type="album", limit=10)
+                    albums = albums_result.get("albums", {}).get("items", []) if albums_result else []
+                except Exception as e:
+                    logger.error(f"Error searching for albums: {e}")
+                    console.print(f"[yellow]Error searching for albums: {e}[/yellow]")
+                    albums = []
+            
+            if search_type == 'playlist' or search_type is None:
+                try:
+                    playlists_result = self.spotify.search(q=query, type='playlist', limit=10)
+                    if playlists_result:
+                        playlists_data = playlists_result.get('playlists') # Safely get 'playlists' dictionary
+                        if playlists_data and isinstance(playlists_data, dict): # Check it's a dict
+                            items = playlists_data.get('items') # Safely get 'items' list
+                            if items and isinstance(items, list): # Check it's a list
+                                for p_item in items:
+                                    if p_item and isinstance(p_item, dict): # Ensure item is a dict and not None
+                                        playlists.append(p_item)
+                except spotipy.SpotifyException as e:
+                    logger.error(f"Spotify API error searching for playlists: {e}")
+                    console.print(f"[yellow]Spotify API error: Could not fetch playlists.[/yellow]")
+                # Other exceptions will be caught by the main try-except in search_music
             
             # Display results only if found
-            if not albums and not tracks:
+            if not albums and not tracks and not playlists:
                 console.print("[yellow]No results found. Try a different search query.[/yellow]")
                 return None
                 
@@ -329,9 +855,35 @@ class SpotifyBurner:
                     track_table.add_row(str(i), track_name, artist_name, album_name)
                 
                 console.print(track_table)
+                
+            # Display playlists
+            if playlists:
+                console.print("\n[bold]Playlists:[/bold]")
+                playlist_table = Table(box=box.SIMPLE)
+                playlist_table.add_column("No.", style="dim", width=4, justify="right")
+                playlist_table.add_column("Playlist", style="cyan")
+                playlist_table.add_column("Owner", style="green")
+                playlist_table.add_column("Tracks", style="yellow", width=8)
+                
+                start_index = len(albums) + len(tracks) + 1
+                for i, playlist_item in enumerate(playlists, start_index):
+                    # Extract playlist information safely
+                    playlist_name = playlist_item.get("name", "Unknown Playlist")
+                    
+                    owner_data = playlist_item.get("owner") # owner_data can be None or a dict
+                    owner_name = owner_data.get("display_name", "Unknown Owner") if isinstance(owner_data, dict) else "Unknown Owner"
+                    
+                    tracks_data = playlist_item.get("tracks") # tracks_data can be None or a dict
+                    track_count_value = tracks_data.get("total") if isinstance(tracks_data, dict) else None
+                    track_count = str(track_count_value) if track_count_value is not None else "?"
+                    
+                    # Add to table
+                    playlist_table.add_row(str(i), playlist_name, owner_name, track_count)
+                
+                console.print(playlist_table)
             
             # Prompt for selection
-            total_items = len(albums) + len(tracks)
+            total_items = len(albums) + len(tracks) + len(playlists)
             input_message = f"Enter selection number [1-{total_items}], or 'C' to cancel"
             
             while True:
@@ -344,17 +896,23 @@ class SpotifyBurner:
                     # Parse selection
                     index = int(choice) - 1
                     
-                    # Determine if album or track
+                    # Determine if album, track, or playlist
                     if index < len(albums):
                         return {
                             "type": "album",
                             "item": albums[index]
                         }
-                    else:
+                    elif index < len(albums) + len(tracks):
                         track_index = index - len(albums)
                         return {
                             "type": "track",
                             "item": tracks[track_index]
+                        }
+                    else:
+                        playlist_index = index - (len(albums) + len(tracks))
+                        return {
+                            "type": "playlist",
+                            "item": playlists[playlist_index]
                         }
                 except (ValueError, IndexError):
                     console.print(f"[red]Invalid selection. Please enter a number between 1 and {total_items}.[red]")
@@ -369,19 +927,37 @@ class SpotifyBurner:
 
     def search_and_download(self):
         """Search for and download music from Spotify."""
-        console.clear()
+        self.clear_screen()
         
         # Show search header
         console.print("[bold cyan]SEARCH AND DOWNLOAD MUSIC[bold cyan]")
         console.print("=" * 50)
         
+        # Get search type first
+        console.print("\n[bold]What would you like to search for?[/bold]")
+        console.print("[1] Songs")
+        console.print("[2] Albums")
+        console.print("[3] Playlists")
+        console.print("[4] All Types")
+        
+        search_type_choice = Prompt.ask("Select search type", choices=["1", "2", "3", "4"], default="4")
+        
+        search_type = None
+        if search_type_choice == "1":
+            search_type = "song"
+        elif search_type_choice == "2":
+            search_type = "album"
+        elif search_type_choice == "3":
+            search_type = "playlist"
+        # else type remains None (search all types)
+        
         # Get search query
-        query = Prompt.ask("Enter song or album name to search")
+        query = Prompt.ask("Enter search query")
         if not query:
             return
         
         # Search for music
-        selection = self.search_music(query)
+        selection = self.search_music(query, search_type)
         if not selection:
             self.wait_for_keypress()
             return
@@ -436,7 +1012,7 @@ class SpotifyBurner:
         """Display detailed information about the selected music.
         
         Args:
-            selection: Dictionary containing album or track info
+            selection: Dictionary containing album, track, or playlist info
             
         Returns:
             list: List of track URLs for downloading
@@ -447,7 +1023,7 @@ class SpotifyBurner:
         item_type = selection["type"]
         item = selection["item"]
         
-        console.clear()
+        self.clear_screen()
         
         if item_type == "album":
             # Display album info
@@ -520,6 +1096,109 @@ class SpotifyBurner:
             # Return single track URL
             track_url = item["external_urls"].get("spotify", "")
             return [track_url] if track_url else []
+            
+        elif item_type == "playlist":
+            # Display playlist info
+            playlist_id = item["id"]
+            playlist_name = item["name"]
+            owner_name = item["owner"]["display_name"] if "owner" in item else "Unknown Owner"
+            total_tracks = item.get("tracks", {}).get("total", "Unknown")
+            
+            # Display playlist info in a panel
+            playlist_info = f"[bold cyan]{playlist_name}[/bold cyan]\n"
+            playlist_info += f"[green]Owner:[/green] {owner_name}\n"
+            playlist_info += f"[green]Tracks:[/green] {total_tracks}"
+            
+            console.print(Panel(playlist_info, title="Playlist Information", border_style="cyan"))
+            
+            # Get playlist tracks
+            try:
+                # Playlists can be large, so we might need to paginate
+                tracks = []
+                results = self.spotify.playlist_tracks(playlist_id)
+                
+                if not results:
+                    logger.error("Received empty results when fetching playlist tracks")
+                    console.print("[yellow]Error: Could not retrieve playlist tracks[/yellow]")
+                    return []
+                    
+                # Use get() with default to avoid KeyError
+                playlist_items = results.get('items', [])
+                if playlist_items:
+                    tracks.extend(playlist_items)
+                
+                # Handle pagination if next page exists
+                while results.get('next'):
+                    results = self.spotify.next(results)
+                    if not results:
+                        break
+                    next_items = results.get('items', [])
+                    if next_items:
+                        tracks.extend(next_items)
+                
+                if not tracks:
+                    console.print("[yellow]No tracks found in this playlist.[/yellow]")
+                    return []
+                
+                # Display tracks in a table
+                tracks_table = Table(title=f"Tracks in {playlist_name}", box=box.SIMPLE)
+                tracks_table.add_column("No.", style="dim", width=4, justify="right")
+                tracks_table.add_column("Title", style="cyan")
+                tracks_table.add_column("Artist", style="green")
+                tracks_table.add_column("Album", style="yellow")
+                tracks_table.add_column("Duration", style="yellow", justify="right")
+                
+                track_urls = []
+                for i, item in enumerate(tracks, 1):
+                    # In playlists, the track is nested inside the item
+                    if not item or 'track' not in item:
+                        continue
+                    
+                    track = item['track']
+                    if not track:  # Skip if track is None (can happen with removed tracks)
+                        continue
+                    
+                    try:
+                        track_name = track.get("name", "Unknown Track")
+                        
+                        # Get artist name safely
+                        artists = track.get("artists", [])
+                        artist_name = artists[0].get("name", "Unknown Artist") if artists else "Unknown Artist"
+                        
+                        # Get album name safely
+                        album = track.get("album", {})
+                        album_name = album.get("name", "Single") if album else "Single"
+                        
+                        # Get duration safely
+                        duration_ms = track.get("duration_ms", 0)
+                        minutes, seconds = divmod(duration_ms // 1000, 60)
+                        duration = f"{minutes}:{seconds:02d}"
+                    except Exception as e:
+                        logger.error(f"Error processing playlist track: {e}")
+                        continue
+                    
+                    tracks_table.add_row(str(i), track_name, artist_name, album_name, duration)
+                    
+                    # Add track URL safely
+                    external_urls = track.get("external_urls", {})
+                    track_url = external_urls.get("spotify", "")
+                    if track_url:
+                        track_urls.append(track_url)
+                
+                console.print(tracks_table)
+                
+                # For large playlists, confirm download
+                if len(tracks) > 50:
+                    console.print(f"\n[yellow]Warning: This playlist contains {len(tracks)} tracks.[/yellow]")
+                    if not Confirm.ask("Are you sure you want to download all these tracks?"):
+                        return []
+                
+                return track_urls
+                
+            except Exception as e:
+                logger.error(f"Error getting playlist tracks: {e}")
+                console.print(f"[bold red]Error getting playlist tracks: {e}[/bold red]")
+                return []
             
         return []
 
@@ -762,11 +1441,45 @@ class SpotifyBurner:
             self.show_manual_burn_instructions(source_dir)
             return False
 
-    def show_manual_burn_instructions(self, source_dir):
-        """Display manual instructions for burning files to CD/DVD."""
-        console.print("\n[bold cyan]Manual CD/DVD Burning Instructions[bold cyan]")
-        console.print("=" * 50)
-        console.print(f"Your downloaded files are located in:\n[bold]{source_dir}[bold]\n")
+    def graceful_shutdown(self):
+        """Perform cleanup operations for a graceful shutdown."""
+        logger.info("Performing graceful shutdown...")
+        
+        # Show cursor before exiting
+        self.show_cursor()
+        
+        # Shutdown the executor if it exists
+        if hasattr(self, 'executor') and self.executor:
+            self.executor.shutdown(wait=False)
+            
+        # Set stop flag for any running threads
+        self.stop_threads = True
+        
+        # Stop the terminal size monitor if it's running
+        if "size_monitor" in app_state and app_state["size_monitor"]:
+            try:
+                app_state["size_monitor"]["stop"]()
+                logger.debug("Stopped terminal size monitor")
+            except Exception as e:
+                logger.error(f"Error stopping terminal size monitor: {e}")
+        
+        logger.info("Graceful shutdown completed")
+        
+    def hide_cursor(self):
+        """Hide the cursor in the terminal."""
+        print("\033[?25l", end="", flush=True)  # ANSI escape code to hide cursor
+        
+    def show_cursor(self):
+        """Show the cursor in the terminal."""
+        print("\033[?25h", end="", flush=True)  # ANSI escape code to show cursor
+        
+    def show_manual_burn_instructions(self, download_dir):
+        """Show manual burning instructions if automatic burning fails."""
+        self.clear_screen()
+        console.print("\n[bold yellow]Manual CD/DVD Burning Instructions[bold yellow]")
+        console.print("=" * 70 + "\n")
+        
+        console.print(f"Your downloaded files are located in:\n[bold]{download_dir}[bold]\n")
         
         if sys.platform == "win32" or sys.platform == "win64":
             console.print("[bold]Windows Instructions:[bold]")
@@ -796,42 +1509,225 @@ class SpotifyBurner:
         # Wait for user acknowledgment
         self.wait_for_keypress("Press any key to continue...")
 
+    def clear_screen(self):
+        """Clear the screen and reset cursor position for consistent display."""
+        console.clear()
+        # Reset cursor position to top-left corner
+        print("\033[H", end="")  # Move cursor to home position
+        # Hide cursor for cleaner appearance
+        self.hide_cursor()
+        
     def show_header(self):
         """Display the application header."""
-        header = """
-[bold cyan]╔══════════════════════════════════════════════════════════════════════╗[bold cyan]
-[bold cyan]║                                                                      ║[bold cyan]
-[bold cyan]║      [bold white]SPOTIFY ALBUM DOWNLOADER AND BURNER v{VERSION}[bold white]                  ║[bold cyan]
-[bold cyan]║                                                                      ║[bold cyan]
-[bold cyan]╚══════════════════════════════════════════════════════════════════════╝[bold cyan]
-        """.format(VERSION=VERSION)
+        # Update terminal dimensions
+        check_terminal_size()
         
-        console.print(header)
-        console.print("[bold]Search, download, and burn your favorite music![bold]\n")
+        # Get theme-appropriate colors
+        header_style = app_state["theme"]["header"] if "theme" in app_state else "bold cyan"
+        main_color = app_state["theme"]["main"] if "theme" in app_state else "cyan"
+        accent_color = app_state["theme"]["accent"] if "theme" in app_state else "green"
+        
+        # Get current terminal dimensions
+        width = app_state["terminal_size"]["width"]
+        height = app_state["terminal_size"]["height"]
+        
+        # For very small terminals, show compact header
+        if width < MIN_TERMINAL_WIDTH - 20 or height < MIN_TERMINAL_HEIGHT - 5:
+            # Ultra-compact header for very constrained terminals
+            compact_text = [
+                f"[{main_color}]SPOTIFY DOWNLOADER & BURNER v{VERSION}[/{main_color}]"
+            ]
+            
+            header = Panel(
+                "\n".join(compact_text),
+                box=box.SIMPLE,
+                border_style=header_style,
+                padding=(0, 1),
+                width=width - 2,
+            )
+            
+            console.print(header)
+            return
+            
+        # For larger terminals, show full logo
+        if app_state["terminal_size"]["width"] >= MIN_TERMINAL_WIDTH:
+            # Select header style based on theme
+            if self.theme in ["modern", "spotify"]:
+                # Create a panel with modern theme logo
+                logo_text = [
+                    f"[{main_color}]    ███████╗██████╗  ██████╗ ████████╗██╗███████╗██╗   ██╗[/{main_color}]    [{accent_color}]██████╗ ██╗   ██╗██████╗ ███╗   ██╗[/{accent_color}]",
+                    f"[{main_color}]    ██╔════╝██╔══██╗██╔═══██╗╚══██╔══╝██║██╔════╝╚██╗ ██╔╝[/{main_color}]    [{accent_color}]██╔══██╗██║   ██║██╔══██╗████╗  ██║[/{accent_color}]",
+                    f"[{main_color}]    ███████╗██████╔╝██║   ██║   ██║   ██║█████╗   ╚████╔╝ [/{main_color}]    [{accent_color}]██████╔╝██║   ██║██████╔╝██╔██╗ ██║[/{accent_color}]",
+                    f"[{main_color}]    ╚════██║██╔═══╝ ██║   ██║   ██║   ██║██╔══╝    ╚██╔╝  [/{main_color}]    [{accent_color}]██╔══██╗██║   ██║██╔══██╗██║╚██╗██║[/{accent_color}]",
+                    f"[{main_color}]    ███████║██║     ╚██████╔╝   ██║   ██║██║        ██║   [/{main_color}]    [{accent_color}]██████╔╝╚██████╔╝██║  ██║██║ ╚████║[/{accent_color}]",
+                    f"[{main_color}]    ╚══════╝╚═╝      ╚═════╝    ╚═╝   ╚═╝╚═╝        ╚═╝   [/{main_color}]    [{accent_color}]╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═══╝[/{accent_color}]",
+                    "",
+                    f"[bold white]                                  v{VERSION}[/bold white]"
+                ]
+                
+                header = Panel(
+                    "\n".join(logo_text),
+                    box=box.ROUNDED,
+                    border_style=header_style,
+                    padding=(1, 2),
+                    width=get_adaptive_width(),
+                    title=f"[{header_style}]SPOTIFY DOWNLOADER & BURNER[/{header_style}]",
+                    title_align="center"
+                )
+                
+                console.print(header)
+                
+            elif self.theme == "neon":
+                # For neon theme, use panel with neon style
+                neon_text = [
+                    f"[{main_color}]  ███████╗██████╗  ██████╗ ████████╗██╗███████╗██╗   ██╗[/{main_color}]    [{accent_color}]██████╗ ██╗   ██╗██████╗ ███╗   ██╗[/{accent_color}]",
+                    f"[{main_color}]  ██╔════╝██╔══██╗██╔═══██╗╚══██╔══╝██║██╔════╝╚██╗ ██╔╝[/{main_color}]    [{accent_color}]██╔══██╗██║   ██║██╔══██╗████╗  ██║[/{accent_color}]",
+                    f"[{main_color}]  ███████╗██████╔╝██║   ██║   ██║   ██║█████╗   ╚████╔╝ [/{main_color}]    [{accent_color}]██████╔╝██║   ██║██████╔╝██╔██╗ ██║[/{accent_color}]",
+                    f"[{main_color}]  ╚════██║██╔═══╝ ██║   ██║   ██║   ██║██╔══╝    ╚██╔╝  [/{main_color}]    [{accent_color}]██╔══██╗██║   ██║██╔══██╗██║╚██╗██║[/{accent_color}]",
+                    f"[{main_color}]  ███████║██║     ╚██████╔╝   ██║   ██║██║        ██║   [/{main_color}]    [{accent_color}]██████╔╝╚██████╔╝██║  ██║██║ ╚████║[/{accent_color}]",
+                    f"[{main_color}]  ╚══════╝╚═╝      ╚═════╝    ╚═╝   ╚═╝╚═╝        ╚═╝   [/{main_color}]    [{accent_color}]╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═══╝[/{accent_color}]",
+                    "",
+                    f"[bold white]                                  VERSION {VERSION}[/bold white]"
+                ]
+                
+                header = Panel(
+                    "\n".join(neon_text),
+                    box=box.DOUBLE,
+                    border_style=header_style,
+                    padding=(1, 2),
+                    width=get_adaptive_width(),
+                    title=f"[{header_style}]NEON STYLE[/{header_style}]",
+                    title_align="center"
+                )
+                
+                console.print(header)
+                
+            else:
+                # For classic theme, use panel with standard style
+                classic_text = [
+                    f"[{header_style}]  ███████╗ ██████╗   ██████╗  ████████╗ ██╗ ███████╗ ██╗   ██╗    ██████╗  ██╗   ██╗ ██████╗  ███╗   ██╗ ███████╗ ██████╗  [/{header_style}]",
+                    f"[{header_style}]  ██╔════╝ ██╔══██╗ ██╔═══██╗ ╚══██╔══╝ ██║ ██╔════╝ ╚██╗ ██╔╝    ██╔══██╗ ██║   ██║ ██╔══██╗ ████╗  ██║ ██╔════╝ ██╔══██╗ [/{header_style}]",
+                    f"[{header_style}]  ███████╗ ██████╔╝ ██║   ██║    ██║    ██║ █████╗    ╚████╔╝     ██████╔╝ ██║   ██║ ██████╔╝ ██╔██╗ ██║ █████╗   ██████╔╝ [/{header_style}]",
+                    f"[{header_style}]  ╚════██║ ██╔═══╝  ██║   ██║    ██║    ██║ ██╔══╝     ╚██╔╝      ██╔══██╗ ██║   ██║ ██╔══██╗ ██║╚██╗██║ ██╔══╝   ██╔══██╗ [/{header_style}]",
+                    f"[{header_style}]  ███████║ ██║      ╚██████╔╝    ██║    ██║ ██║         ██║       ██████╔╝ ╚██████╔╝ ██║  ██║ ██║ ╚████║ ███████╗ ██║  ██║ [/{header_style}]",
+                    f"[{header_style}]  ╚══════╝ ╚═╝       ╚═════╝     ╚═╝    ╚═╝ ╚═╝         ╚═╝       ╚═════╝   ╚═════╝  ╚═╝  ╚═╝ ╚═╝  ╚═══╝ ╚══════╝ ╚═╝  ╚═╝ [/{header_style}]",
+                    "",
+                    f"[bold white]                                  SPOTIFY DOWNLOADER & BURNER v{VERSION}                                  [/bold white]"
+                ]
+                
+                header = Panel(
+                    "\n".join(classic_text),
+                    box=box.ROUNDED,
+                    border_style=header_style,
+                    padding=(1, 0),
+                    width=get_adaptive_width()
+                )
+                
+                console.print(header)
+        else:
+            # For smaller terminals, show a simplified header
+            simple_header = f"[{header_style}]SPOTIFY DOWNLOADER & BURNER v{VERSION}[/{header_style}]"
+            console.print(Panel(
+                simple_header, 
+                border_style=header_style, 
+                box=box.ROUNDED,
+                width=get_adaptive_width()
+            ))
+        
+        # Add slogan with theme-specific formatting
+        if self.theme == "neon":
+            console.print(f"[{accent_color} bold]🎵 Search, download, and burn your favorite music! 🎵[/{accent_color} bold]\n")
+        elif self.theme == "spotify":
+            console.print(Panel.fit(
+                f"[bold]Powered by Spotify API & SpotDL[/bold]", 
+                border_style=accent_color,
+                width=get_adaptive_width(),
+                padding=(0, 2)
+            ))
+        else:
+            console.print(f"[bold]Search, download, and burn your favorite music![/bold]\n")
 
     def show_main_menu(self):
         """Display the main menu and handle user input."""
         while True:
-            console.clear()
+            # Update terminal size first
+            check_terminal_size()
+            
+            # Check if terminal size is adequate, show notification if not
+            if not notify_terminal_resize_issues():
+                # We still continue showing the menu, but the notification will be visible
+                pass
+                
+            # Clear console and ensure cursor is at the top position
+            self.clear_screen()
             self.show_header()
             
+            # Get theme colors for consistent styling
+            main_color = app_state["theme"]["main"] if "theme" in app_state else "cyan"
+            accent_color = app_state["theme"]["accent"] if "theme" in app_state else "green"
+            box_style = app_state["theme"]["box"] if "theme" in app_state else box.ROUNDED
+            border_style = app_state["theme"]["border"] if "theme" in app_state else "cyan"
+            
+            # Create styled menu panel with options table inside
+            menu_title = "[bold]MAIN MENU[/bold]" if self.theme != "spotify" else "[bold]✨ MAIN MENU ✨[/bold]"
+            
+            # Determine appropriate column widths based on terminal size
+            is_wide = app_state["terminal_size"]["width"] >= MIN_TERMINAL_WIDTH
+            
             # Create options table
-            table = Table(show_header=False, box=box.SIMPLE_HEAD, show_edge=False)
-            table.add_column("Key", style="cyan", justify="right")
-            table.add_column("Option", style="white")
+            table = Table(show_header=False, box=box_style, show_edge=False)
+            table.add_column("Key", style=main_color, justify="right", width=6 if is_wide else 3)
+            table.add_column("Icon", style="bright_white", justify="center", width=4 if is_wide else 2)
+            table.add_column("Option", style="white", max_width=80 if is_wide else 40)
             
-            table.add_row("[1]", "[bold green]Manage Existing Albums[bold green] - Play, burn or delete your downloaded albums")
-            table.add_row("[2]", "[bold cyan]Search & Download[bold cyan] - Find and download new music from Spotify")
-            table.add_row("[3]", "[bold magenta]Video Management[bold magenta] - Download and manage videos")
-            table.add_row("[4]", "[bold yellow]Settings[bold yellow] - Configure download and burning options")
-            table.add_row("[5]", "[bold blue]About[bold blue] - Information about this application")
-            table.add_row("[Q]", "[bold red]Exit[bold red] - Quit the application")
+            # Add menu options with icons
+            table.add_row(
+                f"[bold {main_color}][1][/bold {main_color}]", 
+                "📁", 
+                f"[bold green]Manage Existing Albums[/bold green]\n  Play, burn or delete your downloaded albums"
+            )
+            table.add_row(
+                f"[bold {main_color}][2][/bold {main_color}]", 
+                "🔍", 
+                f"[bold {accent_color}]Search & Download[/bold {accent_color}]\n  Find and download new music from Spotify"
+            )
+            table.add_row(
+                f"[bold {main_color}][3][/bold {main_color}]", 
+                "🎬", 
+                f"[bold magenta]Video Management[/bold magenta]\n  Download and manage videos"
+            )
+            table.add_row(
+                f"[bold {main_color}][4][/bold {main_color}]", 
+                "⚙️", 
+                f"[bold yellow]Settings[/bold yellow]\n  Configure download and burning options"
+            )
+            table.add_row(
+                f"[bold {main_color}][5][/bold {main_color}]", 
+                "ℹ️", 
+                f"[bold blue]About[/bold blue]\n  Information about this application"
+            )
+            table.add_row(
+                f"[bold {main_color}][Q][/bold {main_color}]", 
+                "🚪", 
+                f"[bold red]Exit[/bold red]\n  Quit the application"
+            )
             
-            console.print(table)
+            # Show the menu in a panel for better visual appearance
+            console.print(Panel(
+                table,
+                title=menu_title,
+                border_style=border_style,
+                padding=(1, 2),
+                width=get_adaptive_width(),
+                title_align="center"
+            ))
+            
             console.print()
             
+            # Make prompt match the theme
+            prompt_style = f"bold {main_color}" if main_color != "white" else "bold cyan"
             choice = Prompt.ask(
-                "Select an option",
+                f"[{prompt_style}]Select an option[/{prompt_style}]",
                 choices=["1", "2", "3", "4", "5", "Q", "q"],
                 default="2"
             ).upper()
@@ -848,26 +1744,55 @@ class SpotifyBurner:
                 self.about_app()
             elif choice == "Q":
                 console.print("[bold green]Thank you for using Spotify Album Downloader and Burner![bold green]")
+                # Ensure cursor is visible when exiting
+                self.show_cursor()
                 return
 
     def show_existing_albums(self):
         """Display existing albums and provide options to manage them."""
-        albums = self.scan_existing_albums()
+        # Show scanning animation
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold cyan]Scanning your music library...[/bold cyan]"),
+            console=console,
+            transient=True
+        ) as progress:
+            progress.add_task("scan", total=None)
+            albums = self.scan_existing_albums()
+        
+        # Get theme colors for consistent styling
+        main_color = app_state["theme"]["main"] if "theme" in app_state else "cyan"
+        accent_color = app_state["theme"]["accent"] if "theme" in app_state else "green"
+        border_style = app_state["theme"]["border"] if "theme" in app_state else "cyan"
+        box_style = app_state["theme"]["box"] if "theme" in app_state else box.ROUNDED
         
         if not albums:
-            console.print("[yellow]No albums found in your download directory.[/yellow]")
+            console.print(Panel(
+                "[yellow]No albums found in your download directory.[/yellow]",
+                title="Music Library",
+                border_style=border_style,
+                box=box_style
+            ))
             self.wait_for_keypress("Press any key to return to the main menu...")
             return False
             
         while True:
-            console.clear()
-            console.print(f"\n[bold green]Found {len(albums)} existing albums:[bold green]")
+            self.clear_screen()
+            self.show_header()
             
             # Create a table to display the albums
-            table = Table(title="Your Music Library", show_header=True, header_style="bold blue", box=box.ROUNDED)
+            table = Table(
+                title=f"Your Music Library - {len(albums)} Albums", 
+                show_header=True, 
+                header_style=f"bold {main_color}", 
+                box=box_style,
+                border_style=border_style,
+                title_style=f"bold {border_style}"
+            )
+            
             table.add_column("#", style="dim", width=4)
-            table.add_column("Album", style="cyan")
-            table.add_column("Artist", style="green")
+            table.add_column("Album", style=main_color)
+            table.add_column("Artist", style=accent_color)
             table.add_column("Tracks", justify="right")
             table.add_column("Size (MB)", justify="right")
             table.add_column("Date Added", justify="right")
@@ -885,13 +1810,33 @@ class SpotifyBurner:
             
             console.print(table)
             
-            # Provide options to manage albums
-            console.print("\n[bold]Album Management Options:[bold]")
-            console.print("[1] [cyan]Play album[cyan] (opens in default player)")
-            console.print("[2] [green]Burn album to CD/DVD[green]")
-            console.print("[3] [blue]Burn multiple albums to CD/DVD[blue]")
-            console.print("[4] [red]Delete album[red]")
-            console.print("[5] [yellow]Return to main menu[yellow]")
+            # Get theme colors for options menu
+            main_color = app_state["theme"]["main"] if "theme" in app_state else "cyan"
+            accent_color = app_state["theme"]["accent"] if "theme" in app_state else "green"
+            border_style = app_state["theme"]["border"] if "theme" in app_state else "cyan"
+            
+            # Create an options menu with icons
+            options_table = Table(show_header=False, box=box.SIMPLE, show_edge=False)
+            options_table.add_column("Key", style=main_color, justify="right", width=3)
+            options_table.add_column("Icon", style="bright_white", justify="center", width=3)
+            options_table.add_column("Option", style="white")
+            
+            options_table.add_row("[1]", "🎵", "[cyan]Play album[/cyan] (opens in default player)")
+            options_table.add_row("[2]", "💿", "[green]Burn album to CD/DVD[/green]")
+            options_table.add_row("[3]", "📀", "[blue]Burn multiple albums to CD/DVD[/blue]")
+            options_table.add_row("[4]", "🗑️", "[red]Delete album[/red]")
+            options_table.add_row("[5]", "🔙", "[yellow]Return to main menu[/yellow]")
+            
+            # Show options in a panel
+            console.print(Panel(
+                options_table,
+                title="Album Management Options",
+                border_style=border_style,
+                padding=(1, 2)
+            ))
+            
+            # Add a tip for better UX
+            console.print("[dim]Tip: Select an album by number, then choose what to do with it.[/dim]\n")
             
             choice = Prompt.ask("Enter your choice", choices=["1", "2", "3", "4", "5"], default="5")
                 
@@ -1015,30 +1960,69 @@ class SpotifyBurner:
             return []
 
     def wait_for_keypress(self, message="Press any key to continue..."):
-        """Wait for any key to be pressed."""
-        console.print(f"\n{message}", style="bold yellow")
+        """Wait for any key to be pressed with optional animation."""
+        # Show cursor while waiting for input
+        self.show_cursor()
         
-        if sys.platform == "win32" or sys.platform == "win64":
-            msvcrt.getch()  # Windows
-        else:
-            input()  # Unix-based systems (Enter key)
+        if not message:
+            # If no message is provided, wait silently
+            if sys.platform == "win32" or sys.platform == "win64":
+                msvcrt.getch()  # Windows
+            else:
+                input()  # Unix-based systems (Enter key)
+            # Hide cursor again after input
+            self.hide_cursor()
+            return
+            
+        # Get theme color for consistent styling
+        accent_color = app_state["theme"]["accent"] if "theme" in app_state else "green"
+        
+        # Use animated spinner for a more modern look
+        with Progress(
+            SpinnerColumn(spinner_name="dots" if self.theme != "neon" else "dots12"),
+            TextColumn(f"[{accent_color}]{message}[/{accent_color}]"),
+            console=console,
+            transient=True
+        ) as progress:
+            task = progress.add_task("waiting", total=None)
+            
+            # Wait for keypress
+            if sys.platform == "win32" or sys.platform == "win64":
+                msvcrt.getch()  # Windows
+            else:
+                input()  # Unix-based systems (Enter key)
+            
+            # Hide cursor again after input
+            self.hide_cursor()
 
     def prompt_for_album_number(self, albums):
         """Prompt user to select an album number."""
         while True:
             try:
+                # Show cursor for input
+                self.show_cursor()
                 album_num = int(Prompt.ask(f"Enter album number [1-{len(albums)}]"))
+                # Hide cursor after input
+                self.hide_cursor()
+                
                 if 1 <= album_num <= len(albums):
                     return album_num
                 else:
                     console.print(f"[red]Please enter a number between 1 and {len(albums)}[/red]")
             except ValueError:
                 console.print("[red]Please enter a valid number[/red]")
+                # Ensure cursor is hidden after error
+                self.hide_cursor()
 
     def prompt_for_album_numbers(self, albums):
         """Prompt user to select one or multiple album numbers."""
         while True:
+            # Show cursor for input
+            self.show_cursor()
             input_str = Prompt.ask(f"Enter album numbers separated by commas [1-{len(albums)}]")
+            # Hide cursor after input
+            self.hide_cursor()
+            
             try:
                 nums = [int(x.strip()) for x in input_str.split(',')]
                 if all(1 <= n <= len(albums) for n in nums):
@@ -1224,7 +2208,7 @@ class SpotifyBurner:
     def show_video_menu(self):
         """Sub-menu for downloading and managing videos."""
         while True:
-            console.clear()
+            self.clear_screen()
             console.print("\n[bold magenta]Video Management Menu[bold magenta]")
             console.print("[1] [cyan]Download videos from URLs[cyan]")
             console.print("[2] [green]Manage existing videos[green]")
@@ -1245,8 +2229,8 @@ class SpotifyBurner:
                     self.wait_for_keypress()
                     continue
                 while True:
-                    console.clear()
-                    console.print(f"\n[bold green]Found {len(videos)} videos:[bold green]")
+                    self.clear_screen()
+                    console.print(f"\n[bold green]Found {len(videos)} videos:[/bold green]")
                     table = Table(title="Your Video Library", show_header=True, header_style="bold blue", box=box.ROUNDED)
                     table.add_column("#", style="dim", width=4)
                     table.add_column("Video", style="cyan")
@@ -1254,7 +2238,7 @@ class SpotifyBurner:
                     for i, vid in enumerate(videos):
                         table.add_row(str(i+1), vid['name'], str(vid['size']))
                     console.print(table)
-                    console.print("\n[bold]Video Management Options:[bold]")
+                    console.print("\n[bold]Video Management Options:[/bold]")
                     console.print("[1] [cyan]Play video(s)[cyan]")
                     console.print("[2] [green]Burn selected videos[green]")
                     console.print("[3] [red]Delete selected videos[red]")
@@ -1296,26 +2280,57 @@ class SpotifyBurner:
     def manage_settings(self):
         """Manage application settings including CDBurnerXP options."""
         while True:
-            console.clear()
+            self.clear_screen()
             self.show_header()
-            table = Table(title="Application Settings", show_header=True, box=box.ROUNDED)
-            table.add_column("#", style="cyan", justify="right")
-            table.add_column("Setting", style="white")
+            
+            # Get themed box and styling
+            box_style = app_state["theme"]["box"] if "theme" in app_state else box.ROUNDED
+            border_style = app_state["theme"]["border"] if "theme" in app_state else "cyan"
+            
+            # Create a more visually appealing settings table
+            table = Table(
+                title="Application Settings",
+                show_header=True,
+                box=box_style,
+                border_style=border_style,
+                title_style=f"bold {border_style}",
+                padding=(0, 1)
+            )
+            
+            table.add_column("#", style="cyan", justify="right", width=3)
+            table.add_column("Setting", style="white", width=22)
             table.add_column("Current Value", style="green")
+            
+            # Categorize settings with section headers
+            table.add_row("", "[bold]Interface[/bold]", "", style="dim")
+            table.add_row("10", "Theme", self.theme.capitalize())
+            
+            table.add_row("", "[bold]Storage[/bold]", "", style="dim")
             table.add_row("1", "Download Directory", self.download_dir)
             table.add_row("2", "Optical Drive", self.dvd_drive or "Auto-detect")
+            
+            table.add_row("", "[bold]Audio Settings[/bold]", "", style="dim")
             table.add_row("3", "Audio Format", self.audio_format)
             table.add_row("4", "Audio Bitrate", self.bitrate)
             table.add_row("5", "Maximum Threads", str(self.max_threads))
+            
+            table.add_row("", "[bold]Burning Configuration[/bold]", "", style="dim")
             table.add_row("6", "CDBurnerXP Path", self.burn_settings.get("cdburnerxp_path"))
             table.add_row("7", "Burning Speed", str(self.burn_settings.get("speed") or "Auto"))
             table.add_row("8", "Verify After Burning", "Yes" if self.burn_settings.get("verify") else "No")
             table.add_row("9", "Eject After Burning", "Yes" if self.burn_settings.get("eject") else "No")
+            
             console.print(table)
             console.print()
+            
+            # Add a help text
+            console.print("[dim]Choose a setting number to modify, or [B] to go back[/dim]")
+            console.print()
+            
             choice = Prompt.ask(
                 "Select setting to change ([bold]B[/bold] to go back)",
-                choices=[str(i) for i in range(1,10)] + ["B","b"], default="B"
+                choices=[str(i) for i in range(1,11)] + ["B","b"], 
+                default="B"
             ).upper()
             if choice == "B":
                 self.save_config()
@@ -1323,7 +2338,7 @@ class SpotifyBurner:
             elif choice == "1":
                 self.download_dir = Prompt.ask("Enter download directory", default=self.download_dir)
             elif choice == "2":
-                self.dvd_drive = Prompt.ask("Enter drive letter (e.g. E:)", default=self.dvd_drive or "") or None
+                self.dvd_drive = Prompt.ask("Enter drive letter (e.g. E:)", default=self.dvd_drive)
             elif choice == "3":
                 self.audio_format = Prompt.ask("Enter audio format", default=self.audio_format)
             elif choice == "4":
@@ -1342,56 +2357,197 @@ class SpotifyBurner:
                 self.burn_settings["verify"] = Confirm.ask("Verify disc after burning?", default=self.burn_settings.get("verify"))
             elif choice == "9":
                 self.burn_settings["eject"] = Confirm.ask("Eject disc after burning?", default=self.burn_settings.get("eject"))
+            elif choice == "10":
+                # Display theme selection as a table with preview
+                self.clear_screen()
+                self.show_header()
+                
+                # Create theme preview table
+                theme_table = Table(show_header=True, box=box.ROUNDED, title="Theme Selection")
+                theme_table.add_column("#", style="cyan", justify="center")
+                theme_table.add_column("Theme", style="white")
+                theme_table.add_column("Description", style="white")
+                
+                # Add theme options with descriptions
+                theme_table.add_row("1", "[cyan bold]Default[/cyan bold]", "Classic cyan theme with rounded boxes")
+                theme_table.add_row("2", "[blue bold]Dark[/blue bold]", "Deep blue theme with heavy borders")
+                theme_table.add_row("3", "[magenta bold]Light[/magenta bold]", "Magenta theme with square boxes")
+                theme_table.add_row("4", "[bright_blue bold]Modern[/bright_blue bold]", "Bright blue with clean minimalist design")
+                theme_table.add_row("5", "[hot_pink bold]Neon[/hot_pink bold]", "Vibrant pink and cyan with double borders")
+                theme_table.add_row("6", "[green bold]Spotify[/green bold]", "Green theme inspired by Spotify's brand")
+                
+                console.print(theme_table)
+                console.print()
+                
+                # Let user select a theme
+                theme_choice = Prompt.ask(
+                    "Select a theme",
+                    choices=["1", "2", "3", "4", "5", "6", "B", "b"],
+                    default="B"
+                ).upper()
+                
+                if theme_choice == "1":
+                    self.theme = "default"
+                    self.apply_theme("default")
+                elif theme_choice == "2":
+                    self.theme = "dark"
+                    self.apply_theme("dark")
+                elif theme_choice == "3":
+                    self.theme = "light"
+                    self.apply_theme("light")
+                elif theme_choice == "4":
+                    self.theme = "modern"
+                    self.apply_theme("modern")
+                elif theme_choice == "5":
+                    self.theme = "neon"
+                    self.apply_theme("neon")
+                elif theme_choice == "6":
+                    self.theme = "spotify"
+                    self.apply_theme("spotify")
+                
+                # If not B (back), save the theme change
+                if theme_choice != "B":
+                    # Save the configuration with the new theme
+                    self.save_config()
+                    console.print(f"[green]Theme changed to {self.theme}[/green]")
 
     def about_app(self):
         """Display information about the application."""
-        console.clear()
+        self.clear_screen()
         self.show_header()
         
-        # Create a panel with app information
-        about_text = (
-            "[bold]Spotify Album Downloader and Burner v{VERSION}[/bold]\n\n"
-            "A powerful command-line and menu-driven application that lets you search for songs or albums on Spotify, "
-            "display them with detailed information, download them using multithreaded performance, "
-            "and burn them directly to CD/DVD.\n\n"
-            "[bold cyan]🌟 Key Features:[/bold cyan]\n"
-            "- 🔍 Powerful Search: Find tracks and albums on Spotify with ease\n"
-            "- ⚡ Multithreaded Downloads: Download multiple tracks simultaneously\n"
-            "- 💿 Direct CD/DVD Burning: Burn your music to disc\n"
-            "- 🎵 Multiple Audio Formats: Choose from MP3, FLAC, OGG, and more\n"
-            "- 📊 Library Management: Organize, play, and manage your downloaded music\n"
-            "- 📹 Video Support: Download and manage videos from URLs\n"
-            "- ⚙️ Advanced Settings: Customize download location, audio quality, and more\n\n"
-            "[bold cyan]📋 Requirements:[/bold cyan]\n"
-            "- Python 3.6+\n"
-            "- Windows OS for native CD/DVD burning\n"
-            "- Spotify Developer API credentials\n\n"
-            "[bold cyan]🙏 Credits:[/bold cyan]\n"
-            "- Spotipy: Lightweight Python client for Spotify API\n"
-            "- SpotDL: Download music from Spotify\n"
-            "- Rich: Beautiful terminal formatting\n"
-            "- Colorama: Cross-platform colored terminal output\n\n"
-            "[bold cyan]📄 License:[/bold cyan]\n"
-            "This project is licensed under the MIT License."
-        ).format(VERSION=VERSION)
+        # Get theme-specific colors
+        main_color = app_state["theme"]["main"] if "theme" in app_state else "cyan"
+        accent_color = app_state["theme"]["accent"] if "theme" in app_state else "green"
+        border_style = app_state["theme"]["border"] if "theme" in app_state else "cyan"
+        box_style = app_state["theme"]["box"] if "theme" in app_state else box.ROUNDED
         
-        console.print(Panel(about_text, title="About", border_style="blue", width=80))
+        # Create a layout for better organization
+        layout = Layout()
+        
+        # Split the layout into sections
+        layout.split_column(
+            Layout(name="title"),
+            Layout(name="body"),
+            Layout(name="footer")
+        )
+        
+        # Split the body into two columns
+        layout["body"].split_row(
+            Layout(name="features", ratio=2),
+            Layout(name="info", ratio=1)
+        )
+        
+        # Title section with app name and version
+        title_text = f"[bold]Spotify Album Downloader and Burner v{VERSION}[/bold]"
+        layout["title"].update(Panel(
+            title_text,
+            title="About",
+            title_align="center",
+            border_style=border_style,
+            box=box_style,
+            padding=(1, 2)
+        ))
+        
+        # Feature highlights
+        features_text = (
+            f"[bold {main_color}]🌟 Key Features:[/bold {main_color}]\n\n"
+            "- 🔍 [bold]Powerful Search:[/bold] Find tracks and albums on Spotify with ease\n\n"
+            "- ⚡ [bold]Multithreaded Downloads:[/bold] Download multiple tracks simultaneously\n\n"
+            "- 💿 [bold]Direct CD/DVD Burning:[/bold] Burn your music to disc\n\n"
+            "- 🎵 [bold]Multiple Audio Formats:[/bold] Choose from MP3, FLAC, OGG, and more\n\n"
+            "- 📊 [bold]Library Management:[/bold] Organize, play, and manage your downloaded music\n\n"
+            "- 📹 [bold]Video Support:[/bold] Download and manage videos from URLs\n\n"
+            "- ⚙️ [bold]Advanced Settings:[/bold] Customize download location, audio quality, and more"
+        )
+        layout["features"].update(Panel(
+            features_text,
+            title=f"[{accent_color}]Features[/{accent_color}]",
+            border_style=border_style,
+            box=box_style,
+            padding=(1, 2)
+        ))
+        
+        # Info section (Requirements, Credits, License)
+        info_section = Table.grid(padding=1)
+        info_section.add_column()
+        
+        # Requirements subsection
+        requirements = Table.grid(padding=0)
+        requirements.add_column(style="bold")
+        requirements.add_column()
+        requirements.add_row(f"[{main_color}]📋[/{main_color}]", f"[bold {main_color}]Requirements[/bold {main_color}]")
+        requirements.add_row("", "• Python 3.6+")
+        requirements.add_row("", "• Windows OS for native CD/DVD burning")
+        requirements.add_row("", "• Spotify Developer API credentials")
+        
+        # Credits subsection
+        credits = Table.grid(padding=0)
+        credits.add_column(style="bold")
+        credits.add_column()
+        credits.add_row(f"[{main_color}]🙏[/{main_color}]", f"[bold {main_color}]Credits[/bold {main_color}]")
+        credits.add_row("", "• Spotipy: Lightweight Python client")
+        credits.add_row("", "• SpotDL: Download music from Spotify")
+        credits.add_row("", "• Rich: Beautiful terminal formatting")
+        credits.add_row("", "• Colorama: Cross-platform terminal output")
+        
+        # License subsection
+        license_info = Table.grid(padding=0)
+        license_info.add_column(style="bold")
+        license_info.add_column()
+        license_info.add_row(f"[{main_color}]📄[/{main_color}]", f"[bold {main_color}]License[/bold {main_color}]")
+        license_info.add_row("", "This project is licensed under the MIT License.")
+        
+        # Add all subsections to info section
+        info_section.add_row(requirements)
+        info_section.add_row(credits)
+        info_section.add_row(license_info)
+        
+        layout["info"].update(Panel(
+            info_section,
+            title=f"[{accent_color}]Information[/{accent_color}]",
+            border_style=border_style,
+            box=box_style
+        ))
+        
+        # Footer with press any key message
+        layout["footer"].update(Panel(
+            "[dim italic]Press any key to return to the main menu...[/dim italic]",
+            border_style=border_style,
+            box=box_style
+        ))
+        
+        # Print the layout
+        console.print(layout)
         
         # Wait for key press to return to main menu
-        self.wait_for_keypress()
+        self.wait_for_keypress("")
 
-    def run(self, query=None):
+    def run(self, query=None, search_type=None):
         """Run the application with optional command line query.
         
         Args:
             query: Optional search query
+            search_type: Type of search ('song', 'album', 'playlist', or None for all)
         
         Returns:
             int: Exit code (0 for success, 1 for error)
         """
         try:
+            # Check terminal dimensions first
+            if not check_terminal_size():
+                self.show_cursor()  # Ensure cursor is visible
+                width, height = app_state["terminal_size"]["width"], app_state["terminal_size"]["height"]
+                console.print(f"[bold red]Error: Terminal size too small ({width}x{height}).[/bold red]")
+                console.print(f"[yellow]Minimum required terminal size: {MIN_TERMINAL_WIDTH}x{MIN_TERMINAL_HEIGHT}[/yellow]")
+                console.print("[yellow]Please resize your terminal window and try again.[/yellow]")
+                return 1
+                
             # Show the app header
             self.show_header()
+            
+            # Check for interrupted downloads at startup
+            self.check_for_interrupted_downloads()
             
             # Initialize Spotify API
             if not self.initialize_spotify():
@@ -1399,7 +2555,7 @@ class SpotifyBurner:
                 
             if query:
                 # Direct mode with query - go straight to search
-                selection = self.search_music(query)
+                selection = self.search_music(query, search_type)
                 if not selection:
                     return 1
                     
@@ -1425,7 +2581,7 @@ class SpotifyBurner:
                 
                 # Download tracks
                 if not self.download_tracks(tracks, output_dir, album_url):
-                    console.print("[red]Download failed or incomplete![red]")
+                    console.print("[red]Download failed or was incomplete![red]")
                     return 1
                 
                 # Enhance metadata
@@ -1439,16 +2595,22 @@ class SpotifyBurner:
                 console.print("\n[bold green]Process completed successfully![bold green]")
                 return 0
             else:
-                # Interactive mode - show the main menu
+                               # Interactive mode - show the main menu
                 self.show_main_menu()
+                # Ensure cursor is visible when app ends
+                self.show_cursor()
                 return 0
                 
         except KeyboardInterrupt:
-            console.print("\n[yellow]Operation cancelled by user.[yellow]")
+            console.print("\n[yellow]Operation cancelled by user.[/yellow]")
+            # Ensure cursor is visible when app ends
+            self.show_cursor()
             return 0
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
             console.print(f"[bold red]An unexpected error occurred: {e}[bold red]")
+            # Ensure cursor is visible when app ends
+            self.show_cursor()
             return 1
 
     def download_tracks(self, track_urls, output_dir=None, album_url=None):
@@ -1661,14 +2823,106 @@ class SpotifyBurner:
             else:
                 return False
                 
+        except KeyboardInterrupt:
+            logger.error(f"Download of track {url} interrupted by user")
+            if task_id is not None:
+                progress.update(task_id, description=f"[yellow]Interrupted: {url.split('/')[-1]}")
+            return False
+        except subprocess.SubprocessError as e:
+            logger.error(f"subprocess error downloading track {url}: {e}")
+            if task_id is not None:
+                progress.update(task_id, description=f"[red]Process error: {url.split('/')[-1]}")
+            return False
         except Exception as e:
             logger.error(f"Error downloading track {url}: {e}")
             if task_id is not None:
                 progress.update(task_id, description=f"[red]Failed: {url.split('/')[-1]}")
             return False
 
+    def check_for_interrupted_downloads(self):
+        """Check for interrupted downloads and offer to resume them."""
+        # Check if download directory exists
+        if not os.path.exists(self.download_dir):
+            return False
+            
+        # Scan for partially downloaded files (typically with .part or .tmp extension)
+        partial_files = []
+        for root, dirs, files in os.walk(self.download_dir):
+            for file in files:
+                if file.endswith(('.part', '.tmp')):
+                    partial_files.append(os.path.join(root, file))
+                    
+        if not partial_files:
+            return False
+            
+        # Ask user if they want to resume downloads
+        console.print(f"[yellow]Found {len(partial_files)} interrupted downloads.[/yellow]")
+        
+        if Confirm.ask("Would you like to attempt to resume these downloads?"):
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TimeRemainingColumn()
+            ) as progress:
+                task = progress.add_task("[cyan]Resuming downloads...", total=len(partial_files))
+                
+                for file_path in partial_files:
+                    try:
+                        # Extract the original filename from the partial file
+                        original_name = file_path.replace('.part', '').replace('.tmp', '')
+                        dir_path = os.path.dirname(file_path)
+                        
+                        # Build spotdl command with resume flag
+                        cmd = [
+                            "spotdl",
+                            "--output", dir_path,
+                            "--format", self.audio_format,
+                            "--bitrate", self.bitrate,
+                            "--resume"  # Add resume flag
+                        ]
+                        
+                        # Try to extract a Spotify URL from the filename
+                        # This is a heuristic approach and may not work for all files
+                        meta_file = f"{original_name}.spotdlTrackingFile"
+                        if os.path.exists(meta_file):
+                            try:
+                                with open(meta_file, 'r') as f:
+                                    content = f.read()
+                                    if 'spotify.com' in content:
+                                        spotify_url = re.search(r'https://open\.spotify\.com/[^\s"\']+', content)
+                                        if spotify_url:
+                                            cmd.append(spotify_url.group(0))
+                            except:
+                                pass
+                        
+                        if len(cmd) <= 5:  # No URL was added
+                            # Just try to resume based on the file path
+                            cmd.append(original_name)
+                        
+                        # Run the command
+                        subprocess.run(cmd, capture_output=True, text=True)
+                        progress.update(task, advance=1)
+                        
+                    except Exception as e:
+                        logger.error(f"Error resuming download {file_path}: {e}")
+                        
+            console.print("[green]Resume attempts completed.[/green]")
+        
+        return True
+
+
 def main():
     """Main entry point."""
+    # Check terminal size first before parsing arguments
+    if not check_terminal_size():
+        width, height = app_state["terminal_size"]["width"], app_state["terminal_size"]["height"]
+        print(f"\033[31mError: Terminal size too small ({width}x{height})\033[0m")
+        print(f"\033[33mMinimum required terminal size: {MIN_TERMINAL_WIDTH}x{MIN_TERMINAL_HEIGHT}\033[0m")
+        print("\033[33mPlease resize your terminal window and try again.\033[0m")
+        return 1
+        
     parser = argparse.ArgumentParser(
         description="Spotify Album Downloader and Burner - Search, download, and burn music from Spotify."
     )
@@ -1695,6 +2949,10 @@ def main():
         "--bitrate", choices=["128k", "192k", "256k", "320k", "best"],
         help="Audio bitrate for downloads"
     )
+    parser.add_argument(
+        "--type", choices=["song", "album", "playlist", "all"], default="all",
+        help="Type of content to search for (default: all)"
+    )
     
     args = parser.parse_args()
     
@@ -1720,11 +2978,29 @@ def main():
     
     # Run the app
     try:
-        return app.run(args.query)
+        # Convert 'all' to None for the search_type parameter
+        search_type = None if args.type == 'all' else args.type
+        return app.run(args.query, search_type)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Operation cancelled by user.[/yellow]")
+        # Ensure cursor is visible when app ends
+        app.show_cursor()
+        return 0
+    except Exception as e:
+        logger.error(f"Unhandled error in main: {e}")
+        console.print(f"[bold red]An unhandled error occurred: {e}[/bold red]")
+        # Ensure cursor is visible when app ends
+        app.show_cursor()
+        return 1
     finally:
         # Clean up resources when application exits
         if hasattr(app, 'executor') and app.executor:
             app.executor.shutdown(wait=False)
+        # Ensure cursor is always visible
+        try:
+            app.show_cursor()
+        except:
+            pass
 
 
 if __name__ == "__main__":
