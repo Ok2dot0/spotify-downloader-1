@@ -48,3 +48,6 @@ coverage.xml
 .DS_Store
 Thumbs.db
 .cache
+
+WinPython/
+PortableData/

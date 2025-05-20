@@ -774,8 +774,7 @@ class SpotifyBurner:
             albums = []
             tracks = []
             playlists = []
-            
-            # Determine which types to search based on search_type
+              # Determine which types to search based on search_type
             if search_type == 'song' or search_type is None:
                 try:
                     tracks_result = self.spotify.search(query, type="track", limit=10)
@@ -964,6 +963,10 @@ class SpotifyBurner:
         
         # Display detailed information and get tracks
         tracks = self.display_music_info(selection)
+        if not tracks:
+            console.print("[yellow]No tracks found for the selection.[/yellow]")
+            self.wait_for_keypress()
+            return
         
         # Get album URL for more efficient album downloads
         album_url = None
@@ -974,37 +977,47 @@ class SpotifyBurner:
         if not Confirm.ask("\nDo you want to download these tracks?"):
             return
         
-        # Create album-specific directory for the download
-        output_dir = None
+        # Determine base name for download folder
+        base_folder_name = "Downloaded Tracks"  # Default
+        item = selection["item"]
         if selection["type"] == "album":
-            # Create directory with "Artist - Album" format
-            album_name = selection["item"]["name"]
-            artist_name = selection["item"]["artists"][0]["name"]
-            album_dir = f"{artist_name} - {album_name}"
-            output_dir = os.path.join(self.download_dir, album_dir)
-        else:
-            # For single tracks, use the parent album info if available
-            track = selection["item"]
-            if "album" in track:
-                album_name = track["album"]["name"]
-                artist_name = track["artists"][0]["name"]
-                album_dir = f"{artist_name} - {album_name}"
-                output_dir = os.path.join(self.download_dir, album_dir)
+            artist_name = item["artists"][0]["name"] if item.get("artists") else "Unknown Artist"
+            album_name = item.get("name", "Unknown Album")
+            base_folder_name = f"{artist_name} - {album_name}"
+        elif selection["type"] == "track":
+            artist_name = item["artists"][0]["name"] if item.get("artists") else "Unknown Artist"
+            if item.get("album") and item["album"].get("name"):
+                album_name = item["album"].get("name", "Unknown Album")
+                base_folder_name = f"{artist_name} - {album_name}"
+            else:
+                track_name = item.get("name", "Unknown Track")
+                base_folder_name = f"{artist_name} - {track_name}"
+        elif selection["type"] == "playlist":
+            base_folder_name = item.get("name", "Unnamed Playlist")
+
+
+        # Sanitize the base folder name
+        sane_folder_name = re.sub(r'[<>:\"/\\\\|?*]', '_', base_folder_name)  # Invalid path chars
+        sane_folder_name = re.sub(r'[\\.\\s]+$', '', sane_folder_name) # trailing dots/spaces
+        sane_folder_name = re.sub(r'^[\\.\\s]+', '', sane_folder_name) # leading dots/spaces
+        if not sane_folder_name:
+            sane_folder_name = "Sanitized_Downloaded_Tracks"
+            
+        current_output_dir = os.path.join(self.download_dir, sane_folder_name)
         
         # Download tracks
-        success = self.download_tracks(tracks, output_dir, album_url)
-        
+        success = self.download_tracks(tracks, current_output_dir, album_url)
         if not success:
-            console.print("[red]Download failed or was incomplete![red]")
+            console.print("[red]Download failed or was incomplete! Check the error messages above for details.[/red]")
             self.wait_for_keypress()
             return
         
         # Enhance metadata
-        self.enhance_download_metadata(selection, output_dir)
+        self.enhance_download_metadata(selection, current_output_dir)
         
         # Ask about burning
         if Confirm.ask("\nDo you want to burn these tracks to CD/DVD?"):
-            self.burn_to_disc(output_dir, self.dvd_drive)
+            self.burn_to_disc(current_output_dir, self.dvd_drive)
         
         self.wait_for_keypress()
 
@@ -1673,8 +1686,7 @@ class SpotifyBurner:
             
             # Determine appropriate column widths based on terminal size
             is_wide = app_state["terminal_size"]["width"] >= MIN_TERMINAL_WIDTH
-            
-            # Create options table
+              # Create options table
             table = Table(show_header=False, box=box_style, show_edge=False)
             table.add_column("Key", style=main_color, justify="right", width=6 if is_wide else 3)
             table.add_column("Icon", style="bright_white", justify="center", width=4 if is_wide else 2)
@@ -1701,26 +1713,11 @@ class SpotifyBurner:
                 "⚙️", 
                 f"[bold yellow]Settings[/bold yellow]\n  Configure download and burning options"
             )
-            table.add_row(
-                f"[bold {main_color}][5][/bold {main_color}]", 
+            table.add_row(                f"[bold {main_color}][5][/bold {main_color}]", 
                 "ℹ️", 
-                f"[bold blue]About[/bold blue]\n  Information about this application"
-            )
-            table.add_row(
-                f"[bold {main_color}][Q][/bold {main_color}]", 
-                "🚪", 
-                f"[bold red]Exit[/bold red]\n  Quit the application"
-            )
-            
-            # Show the menu in a panel for better visual appearance
-            console.print(Panel(
-                table,
-                title=menu_title,
-                border_style=border_style,
-                padding=(1, 2),
-                width=get_adaptive_width(),
-                title_align="center"
-            ))
+                f"[bold blue]About / Help[/bold blue]"
+            )            # Display the menu table
+            console.print(table)
             
             console.print()
             
@@ -2578,10 +2575,9 @@ class SpotifyBurner:
                     artist_name = selection["item"]["artists"][0]["name"]
                     album_dir = f"{artist_name} - {album_name}"
                     output_dir = os.path.join(self.download_dir, album_dir)
-                
-                # Download tracks
+                  # Download tracks
                 if not self.download_tracks(tracks, output_dir, album_url):
-                    console.print("[red]Download failed or was incomplete![red]")
+                    console.print("[red]Download failed or was incomplete! Check the error messages above for details.[/red]")
                     return 1
                 
                 # Enhance metadata
@@ -2602,17 +2598,16 @@ class SpotifyBurner:
                 return 0
                 
         except KeyboardInterrupt:
-            console.print("\n[yellow]Operation cancelled by user.[/yellow]")
-            # Ensure cursor is visible when app ends
+            console.print("\n[yellow]Operation cancelled by user.[/yellow]")            # Ensure cursor is visible when app ends
             self.show_cursor()
             return 0
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
-            console.print(f"[bold red]An unexpected error occurred: {e}[bold red]")
+            console.print(f"[bold red]An unexpected error occurred: {e}[/bold red]")
             # Ensure cursor is visible when app ends
             self.show_cursor()
             return 1
-
+            
     def download_tracks(self, track_urls, output_dir=None, album_url=None):
         """Download tracks from Spotify URLs using spotdl.
         
@@ -2639,76 +2634,109 @@ class SpotifyBurner:
         console.print(f"\n[bold cyan]Downloading {len(track_urls)} tracks to:[/bold cyan]")
         console.print(f"[bold]{output_dir}[/bold]")
         
+        # Maximum number of retry attempts
+        MAX_RETRIES = 3
+        
         # If we have an album URL, use that for more efficient downloading
         if album_url and len(track_urls) > 1:
-            try:
-                with Progress(
-                    SpinnerColumn(),
-                    TextColumn("[progress.description]{task.description}"),
-                    BarColumn(),
-                    TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-                    TimeRemainingColumn()
-                ) as progress:
-                    task = progress.add_task("[cyan]Downloading album...", total=100)
-                    
-                    # Build spotdl command
-                    cmd = [
-                        "spotdl",
-                        "--output", output_dir,
-                        "--format", self.audio_format,
-                        "--bitrate", self.bitrate,
-                        album_url
-                    ]
-                    
-                    # Start the process with Popen to allow monitoring
-                    process = subprocess.Popen(
-                        cmd,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        text=True,
-                        bufsize=1,
-                        universal_newlines=True
-                    )
-                    
-                    # Read output line by line and update progress
-                    while True:
-                        line = process.stdout.readline()
-                        if not line and process.poll() is not None:
-                            break
-                        if line:
-                            line = line.strip()
-                            logger.debug(line)
+            album_download_success = False
+            retry_count = 0
+            
+            while not album_download_success and retry_count < MAX_RETRIES:
+                try:
+                    retry_suffix = f" (Retry {retry_count + 1}/{MAX_RETRIES})" if retry_count > 0 else ""
+                    with Progress(
+                        SpinnerColumn(),
+                        TextColumn("[progress.description]{task.description}"),
+                        BarColumn(),
+                        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                        TimeRemainingColumn()
+                    ) as progress:
+                        task = progress.add_task(f"[cyan]Downloading album...{retry_suffix}", total=100)
+                        
+                        # Build spotdl command
+                        cmd = [
+                            "spotdl",
+                            "--output", output_dir,
+                            "--format", self.audio_format,
+                            "--bitrate", self.bitrate,
+                            album_url
+                        ]
+                        
+                        # Start the process with Popen to allow monitoring
+                        process = subprocess.Popen(
+                            cmd,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT,
+                            text=True,
+                            bufsize=1,
+                            universal_newlines=True
+                        )
+                        
+                        # Record all output for error reporting
+                        output_lines = []
+                        
+                        # Read output line by line and update progress
+                        while True:
+                            line = process.stdout.readline()
+                            if not line and process.poll() is not None:
+                                break
+                            if line:
+                                line = line.strip()
+                                output_lines.append(line)
+                                logger.debug(line)
+                                
+                                # Estimate progress based on output
+                                if "Downloaded" in line and "%" in line:
+                                    try:
+                                        # Try to parse progress from spotdl output
+                                        percent_str = line.split("%")[0].split(" ")[-1].strip()
+                                        percent = float(percent_str)
+                                        progress.update(task, completed=percent)
+                                    except:
+                                        # If parsing fails, show indeterminate progress
+                                        progress.update(task, advance=1)
+                        
+                        # Get return code
+                        return_code = process.poll()
+                        
+                        # Finish progress bar
+                        progress.update(task, completed=100)
+                        
+                        if return_code == 0:
+                            console.print("[green]Album download completed successfully![/green]")
+                            album_download_success = True
+                            return True
+                        else:
+                            # If this is the last retry, show detailed error and fall through to individual tracks
+                            if retry_count >= MAX_RETRIES - 1:
+                                console.print("[red]Error downloading album. Falling back to individual tracks...[/red]")
+                                console.print("[yellow]Error details:[/yellow]")
+                                error_output = "\n".join(output_lines[-10:])  # Show last 10 lines
+                                console.print(f"[yellow]{error_output}[/yellow]")
+                            else:
+                                console.print(f"[yellow]Album download failed. Retrying ({retry_count + 1}/{MAX_RETRIES})...[/yellow]")
+                                # Wait briefly before retry
+                                time.sleep(2)
+                                retry_count += 1
+                                continue  # Try again
                             
-                            # Estimate progress based on output
-                            if "Downloaded" in line and "%" in line:
-                                try:
-                                    # Try to parse progress from spotdl output
-                                    percent_str = line.split("%")[0].split(" ")[-1].strip()
-                                    percent = float(percent_str)
-                                    progress.update(task, completed=percent)
-                                except:
-                                    # If parsing fails, show indeterminate progress
-                                    progress.update(task, advance=1)
+                            # If all retries failed, fall through to individual track download
+                except Exception as e:
+                    logger.error(f"Error downloading album: {str(e)}")
+                    console.print(f"[yellow]Error downloading album: {str(e)}[/yellow]")
                     
-                    # Get return code
-                    return_code = process.poll()
-                    
-                    # Finish progress bar
-                    progress.update(task, completed=100)
-                    
-                    if return_code == 0:
-                        console.print("[green]Album download completed successfully![/green]")
-                        return True
+                    if retry_count >= MAX_RETRIES - 1:
+                        console.print("[yellow]Falling back to individual track download...[/yellow]")
                     else:
-                        console.print("[red]Error downloading album. Falling back to individual tracks...[/red]")
-                        # If album download fails, we'll fall through to individual download
-            except Exception as e:
-                logger.error(f"Error downloading album: {e}")
-                console.print(f"[yellow]Error downloading album: {e}[/yellow]")
-                console.print("[yellow]Falling back to individual track download...[/yellow]")
-                # Fall through to individual track download
-        
-        # Download individual tracks
+                        console.print(f"[yellow]Retrying album download ({retry_count + 1}/{MAX_RETRIES})...[/yellow]")
+                        time.sleep(2)  # Wait before retry
+                        retry_count += 1
+                        continue  # Try again
+                
+                # If we get here and haven't continued the loop, break out
+                break
+          # Download individual tracks
         try:
             with Progress(
                 SpinnerColumn(),
@@ -2727,19 +2755,32 @@ class SpotifyBurner:
                         self._download_single_track,
                         url,
                         output_dir,
-                        progress
+                        progress,
+                        MAX_RETRIES  # Pass max retries to single track download
                     )
                     download_futures.append(future)
                 
                 # Wait for all downloads to complete
                 successful_downloads = 0
-                for future in download_futures:
+                failed_tracks = []
+                
+                for i, future in enumerate(download_futures):
                     try:
-                        if future.result():
+                        result = future.result()
+                        if result["success"]:
                             successful_downloads += 1
+                        else:
+                            failed_tracks.append({
+                                "url": track_urls[i],
+                                "error": result["error"]
+                            })
                         progress.update(task, advance=1)
                     except Exception as e:
-                        logger.error(f"Error in download thread: {e}")
+                        logger.error(f"Error in download thread: {str(e)}")
+                        failed_tracks.append({
+                            "url": track_urls[i],
+                            "error": str(e)
+                        })
                         progress.update(task, advance=1)
                 
                 # Report results
@@ -2748,96 +2789,186 @@ class SpotifyBurner:
                     return True
                 elif successful_downloads > 0:
                     console.print(f"[yellow]Downloaded {successful_downloads} of {len(track_urls)} tracks.[/yellow]")
-                    return True  # Still return True if some tracks were downloaded
+                    
+                    # Show failed track details
+                    if failed_tracks:
+                        console.print("[yellow]Failed tracks:[/yellow]")
+                        for failed in failed_tracks:
+                            track_id = failed["url"].split('/')[-1]
+                            console.print(f"[red]Track {track_id}: {failed['error']}[/red]")
+                    
+                    # Return true if we got at least half of the tracks
+                    return successful_downloads >= len(track_urls) / 2
                 else:
-                    console.print("[red]Failed to download any tracks.[/red]")
+                    console.print("[bold red]Failed to download any tracks.[/bold red]")
+                    
+                    # Show error details for failed tracks
+                    if failed_tracks:
+                        console.print("[yellow]Error details:[/yellow]")
+                        for failed in failed_tracks:
+                            track_id = failed["url"].split('/')[-1]
+                            console.print(f"[red]Track {track_id}: {failed['error']}[/red]")
+                    
                     return False
         except Exception as e:
-            logger.error(f"Error downloading tracks: {e}")
-            console.print(f"[bold red]Error downloading tracks: {e}[/bold red]")
+            logger.error(f"Error downloading tracks: {str(e)}")
+            console.print(f"[bold red]Error downloading tracks: {str(e)}[/bold red]")  # Show traceback for better debugging
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return False
-
-    def _download_single_track(self, url, output_dir, progress=None):
-        """Download a single track using spotdl.
+            
+    def _download_single_track(self, url, output_dir, progress=None, max_retries=3):
+        """Download a single track using spotdl with automatic retries.
         
         Args:
             url: Spotify track URL
             output_dir: Output directory
             progress: Optional progress display object
+            max_retries: Maximum number of retries (default: 3)
             
         Returns:
-            bool: True if download was successful
+            dict: Dictionary with 'success' boolean and optional 'error' message
         """
         task_id = None
+        track_id = url.split('/')[-1]
         if progress:
-            task_id = progress.add_task(f"[green]Track: {url.split('/')[-1]}", total=100)
+            task_id = progress.add_task(f"[green]Track: {track_id}", total=100)
         
-        try:
-            # Build command
-            cmd = [
-                "spotdl",
-                "--output", output_dir,
-                "--format", self.audio_format,
-                "--bitrate", self.bitrate,
-                url
-            ]
+        retry_count = 0
+        while retry_count < max_retries:
+            retry_suffix = f" (Retry {retry_count + 1}/{max_retries})" if retry_count > 0 else ""
             
-            # Run the command
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                universal_newlines=True
-            )
+            if task_id is not None and retry_count > 0:
+                progress.update(task_id, description=f"[yellow]Track: {track_id}{retry_suffix}")
+                progress.update(task_id, completed=0)  # Reset progress for retry
             
-            # Read output and update progress
-            while True:
-                line = process.stdout.readline()
-                if not line and process.poll() is not None:
-                    break
-                if line and task_id is not None:
-                    line = line.strip()
-                    logger.debug(line)
-                    
-                    # Update progress based on output
-                    if "Downloaded" in line and "%" in line:
-                        try:
-                            percent_str = line.split("%")[0].split(" ")[-1].strip()
-                            percent = float(percent_str)
-                            progress.update(task_id, completed=percent)
-                        except:
-                            # If parsing fails, show indeterminate progress
-                            progress.update(task_id, advance=2)
-            
-            # Get return code
-            return_code = process.poll()
-            
-            # Complete the progress
-            if task_id is not None:
-                progress.update(task_id, completed=100)
-            
-            if return_code == 0:
-                return True
-            else:
-                return False
+            try:
+                # Build command
+                cmd = [
+                    "spotdl",
+                    "--output", output_dir,
+                    "--format", self.audio_format,
+                    "--bitrate", self.bitrate,
+                    url
+                ]
                 
-        except KeyboardInterrupt:
-            logger.error(f"Download of track {url} interrupted by user")
-            if task_id is not None:
-                progress.update(task_id, description=f"[yellow]Interrupted: {url.split('/')[-1]}")
-            return False
-        except subprocess.SubprocessError as e:
-            logger.error(f"subprocess error downloading track {url}: {e}")
-            if task_id is not None:
-                progress.update(task_id, description=f"[red]Process error: {url.split('/')[-1]}")
-            return False
-        except Exception as e:
-            logger.error(f"Error downloading track {url}: {e}")
-            if task_id is not None:
-                progress.update(task_id, description=f"[red]Failed: {url.split('/')[-1]}")
-            return False
+                # Run the command
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    universal_newlines=True
+                )
+                
+                # Collect output for error reporting
+                output_lines = []
+                error_lines = []
+                
+                # Read output and update progress
+                while True:
+                    line = process.stdout.readline()
+                    if not line and process.poll() is not None:
+                        break
+                    if line:
+                        line = line.strip()
+                        output_lines.append(line)
+                        logger.debug(line)
+                        
+                        # Update progress based on output
+                        if "Downloaded" in line and "%" in line:
+                            try:
+                                percent_str = line.split("%")[0].split(" ")[-1].strip()
+                                percent = float(percent_str)
+                                if task_id is not None:
+                                    progress.update(task_id, completed=percent)
+                            except:
+                                # If parsing fails, show indeterminate progress
+                                if task_id is not None:
+                                    progress.update(task_id, advance=2)
+                        
+                        # Collect error lines for reporting
+                        if "ERROR" in line or "Error" in line:
+                            error_lines.append(line)
+                
+                # Get return code
+                return_code = process.poll()
+                
+                # Complete the progress
+                if task_id is not None:
+                    progress.update(task_id, completed=100)
+                
+                if return_code == 0:
+                    # Success! Return with success status
+                    if task_id is not None:
+                        progress.update(task_id, description=f"[green]Track: {track_id} ✓")
+                    return {"success": True}
+                else:
+                    # Check if this is the last retry
+                    if retry_count >= max_retries - 1:
+                        if task_id is not None:
+                            progress.update(task_id, description=f"[red]Failed: {track_id}")
+                        
+                        # Compile error message from output
+                        error_message = "Unknown error"
+                        if error_lines:
+                            error_message = error_lines[-1]  # Use the last error message
+                        elif output_lines:
+                            error_message = output_lines[-1]  # Use the last output line
+                            
+                        logger.error(f"Failed to download track {track_id} after {max_retries} retries: {error_message}")
+                        return {
+                            "success": False,
+                            "error": error_message
+                        }
+                    else:
+                        # Not the last retry, try again
+                        logger.warning(f"Retry {retry_count + 1}/{max_retries} for track {track_id}")
+                        retry_count += 1
+                        time.sleep(2)  # Wait before retry
+                        continue
+                        
+            except KeyboardInterrupt:
+                logger.error(f"Download of track {track_id} interrupted by user")
+                if task_id is not None:
+                    progress.update(task_id, description=f"[yellow]Interrupted: {track_id}")
+                return {
+                    "success": False,
+                    "error": "Interrupted by user"
+                }
+            except subprocess.SubprocessError as e:
+                error_msg = str(e)
+                logger.error(f"subprocess error downloading track {track_id}: {error_msg}")
+                
+                # Check if this is the last retry
+                if retry_count >= max_retries - 1:
+                    if task_id is not None:
+                        progress.update(task_id, description=f"[red]Process error: {track_id}")
+                    return {
+                        "success": False,
+                        "error": f"Process error: {error_msg}"
+                    }
+                else:
+                    retry_count += 1
+                    time.sleep(2)  # Wait before retry
+                    continue
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(f"Error downloading track {track_id}: {error_msg}")
+                
+                # Check if this is the last retry
+                if retry_count >= max_retries - 1:
+                    if task_id is not None:
+                        progress.update(task_id, description=f"[red]Failed: {track_id}")
+                    return {
+                        "success": False,
+                        "error": error_msg
+                    }
+                else:
+                    retry_count += 1
+                    time.sleep(2)  # Wait before retry
+                    continue
 
     def check_for_interrupted_downloads(self):
         """Check for interrupted downloads and offer to resume them."""
