@@ -3,11 +3,11 @@
     "dvd_drive": "F:",
     "max_threads": 3,
     "audio_format": "mp3",
-    "bitrate": "best",
+    "bitrate": "128k",
     "theme": "spotify",
     "burn_method": "windows_native",
     "burn_settings": {
-        "cdburnerxp_path": "C:\\Program Files\\CDBurnerXP\\cdbxpcmd.exe",
+        "cdburnerxp_path": "C:\\Users\\pppum\\agfaf\\spotify-downloader-1\\CDBurnerXP\\cdbxpcmd.exe",
         "speed": "MAX",
         "verify": true,
         "eject": true,

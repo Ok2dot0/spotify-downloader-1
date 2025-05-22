@@ -167,7 +167,7 @@ dotenv.load_dotenv()
 DEFAULT_OUTPUT_DIR = os.path.join(os.path.expanduser("~"), "Music", "SpotifyDownloads")
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 VERSION = "2.0.0"  # Updated version number
-
+PYTHON_PATH = ".\\WinPython\\WPy64-31330\\python\\python.exe"
 # Application state
 app_state = {
     "download_queue": queue.Queue(),
@@ -505,7 +505,7 @@ class SpotifyBurner:
         self.dvd_drive = self.config.get("dvd_drive", None)
         self.max_threads = self.config.get("max_threads", 3)
         self.audio_format = self.config.get("audio_format", "mp3")
-        self.bitrate = self.config.get("bitrate", "320k")
+        self.bitrate = self.config.get("bitrate", "128k")
         self.theme = self.config.get("theme", "default")
         self.burn_method = self.config.get("burn_method", "windows_native")
         # Prepare burn settings with defaults merged with user config
@@ -1281,10 +1281,66 @@ class SpotifyBurner:
             logger.error(f"Error deleting album {album_path}: {e}")
             console.print(f"[red]Error deleting album: {e}[/red]")
             return False
-
+            
     def detect_optical_drives(self):
-        """Detect optical drives on the system."""
-        drives = []
+        """Detect optical drives on the system.
+        
+        Returns:
+            dict: A dictionary mapping drive letters to drive numbers
+        """
+        drives = {}
+        
+        # Try using CDBurnerXP's --list-drives command to get drive information
+        try:
+            # First check for environment variable (set by batch file)
+            env_path = os.environ.get("CDBURNERXP_PATH")
+            # Then check burn settings, then fall back to default if not set
+            default_exe = ".\\CDBurnerXP\\cdbxpcmd.exe"
+            cdburnerxp_path = env_path or self.burn_settings.get("cdburnerxp_path") or default_exe
+            
+            if os.path.exists(cdburnerxp_path):
+                logger.info(f"Using CDBurnerXP at {cdburnerxp_path} to detect drives")
+                console.print(f"[cyan]Detecting optical drives with CDBurnerXP...[/cyan]")
+                
+                # Run the command to list drives
+                process = subprocess.run([cdburnerxp_path, "--list-drives"], 
+                                        capture_output=True, text=True)
+                
+                if process.returncode == 0:
+                    # Process successful output
+                    output = process.stdout
+                    lines = output.strip().split('\n')
+                              # Parse the output to get drive numbers and letters
+                    for line in lines:
+                        # Handle formats like "0: DVD RW (H:\)" or "0: Drive D:\"
+                        if ':' in line:
+                            parts = line.split(':', 1)
+                            drive_number = parts[0].strip()
+                            
+                            # Extract drive letter from parentheses like (H:\) or from format like "Drive D:\"
+                            if '(' in line and ')' in line:
+                                drive_letter = line.split('(')[1].split(')')[0].replace(':\\', '')
+                                drives[drive_letter] = drive_number
+                            else:
+                                match = re.search(r'Drive\s+([A-Z]):.*', parts[1])
+                                if match:
+                                    drive_letter = match.group(1)
+                                    drives[drive_letter] = drive_number
+                            
+                            if drive_letter in drives:
+                                logger.info(f"Found optical drive: {drive_letter}: (drive number {drive_number})")
+                    
+                    if drives:
+                        return drives
+                    else:
+                        logger.warning("No drives found with CDBurnerXP --list-drives")
+                else:
+                    logger.warning(f"CDBurnerXP --list-drives returned error code {process.returncode}")
+        except Exception as e:
+            logger.error(f"Error using CDBurnerXP to detect drives: {e}")
+        
+        # Fall back to Windows or system-specific methods if the CDBurnerXP method fails
+        drive_letters = []
         
         # Windows-specific code to detect optical drives
         if sys.platform == "win32" or sys.platform == "win64":
@@ -1292,7 +1348,6 @@ class SpotifyBurner:
                 try:
                     # Initialize COM for this thread
                     pythoncom.CoInitialize()
-                    
                     # Create IMAPI2 disc master
                     disc_master = win32com.client.Dispatch("IMAPI2.MsftDiscMaster2")
                     disc_recorder = win32com.client.Dispatch("IMAPI2.MsftDiscRecorder2")
@@ -1301,34 +1356,54 @@ class SpotifyBurner:
                     for i in range(disc_master.Count):
                         unique_id = disc_master.Item(i)
                         disc_recorder.InitializeDiscRecorder(unique_id)
-                        
                         # Get the drive letter
-                        drive_letter = disc_recorder.VolumePathNames(0)
-                        drives.append(drive_letter)
-                        
-                        logger.info(f"Found optical drive: {drive_letter}")
+                        # VolumePathNames returns a tuple, not a callable method
+                        try:
+                            volume_paths = disc_recorder.VolumePathNames
+                            # Check if volume_paths is None, empty, or not a sequence
+                            if volume_paths and hasattr(volume_paths, '__len__') and len(volume_paths) > 0:
+                                drive_letter = volume_paths[0]
+                                drive_letters.append(drive_letter)
+                                logger.info(f"Found optical drive (fallback): {drive_letter}")
+                            else:
+                                logger.warning(f"No volume path found for disc recorder {i}")
+                        except Exception as e:
+                            logger.warning(f"Error accessing volume paths for disc recorder {i}: {e}")
+                            # Try to get friendly name as fallback
+                            try:
+                                friendly_name = disc_recorder.GetDeviceName()
+                                logger.info(f"Found optical drive with name: {friendly_name} but could not get drive letter")
+                            except:
+                                pass
                         
                 except Exception as e:
                     logger.error(f"Error detecting optical drives via IMAPI2: {e}")
                     # Fallback to the standard method
-                    drives = self._detect_optical_drives_fallback()
+                    drive_letters = self._detect_optical_drives_fallback()
                 finally:
                     # Clean up COM
                     pythoncom.CoUninitialize()
             else:
                 # Use fallback if pywin32 is not available
-                drives = self._detect_optical_drives_fallback()
+                drive_letters = self._detect_optical_drives_fallback()
         else:
             # For Unix-based systems
             if os.path.exists('/dev/cdrom'):
-                drives.append('/dev/cdrom')
+                drive_letters.append('/dev/cdrom')
             if os.path.exists('/dev/dvd'):
-                drives.append('/dev/dvd')
+                drive_letters.append('/dev/dvd')
+          # Convert the list of drive letters to a dictionary with mock drive numbers
+        for i, drive_letter in enumerate(drive_letters):
+            drives[drive_letter] = str(i)
         
         return drives
-        
+
     def _detect_optical_drives_fallback(self):
-        """Fallback method to detect optical drives using standard Windows API."""
+        """Fallback method to detect optical drives using standard Windows API.
+        
+        Returns:
+            list: A list of drive letters
+        """
         drives = []
         
         # Windows-specific code to detect optical drives
@@ -1371,10 +1446,12 @@ class SpotifyBurner:
             # For non-Windows, we have to use manual instructions
             self.show_manual_burn_instructions(source_dir)
             return False
-        
-        # Use CDBurnerXP command-line for burning; fall back to default if not set
-        default_exe = "C:\\Program Files\\CDBurnerXP\\cdbxpcmd.exe"
-        cdburnerxp_path = self.burn_settings.get("cdburnerxp_path") or default_exe
+          # Use CDBurnerXP command-line for burning
+        # First check for environment variable (set by batch file)
+        env_path = os.environ.get("CDBURNERXP_PATH")
+        # Then check burn settings, then fall back to default if not set
+        default_exe = ".\\CDBurnerXP\\cdbxpcmd.exe"
+        cdburnerxp_path = env_path or self.burn_settings.get("cdburnerxp_path") or default_exe
         if not os.path.exists(cdburnerxp_path):
             logger.error(f"CDBurnerXP not found at {cdburnerxp_path}")
             console.print(f"[bold red]Error: CDBurnerXP not found at {cdburnerxp_path}[/bold red]")
@@ -1389,15 +1466,73 @@ class SpotifyBurner:
             else:
                 disc_label = dir_name or f"SpotifyMusic_{time.strftime('%Y%m%d')}"
             disc_label = re.sub(r'[^\w\s-]', '', disc_label).strip()
-            disc_label = disc_label[:16] if len(disc_label) > 16 else disc_label
-            # Detect and select drive
-            optical_drives = self.detect_optical_drives()
-            if not optical_drives:
-                logger.error("No optical drives detected for burning")
-                console.print("[bold red]Error: No optical drives detected[/bold red]")
-                self.show_manual_burn_instructions(source_dir)
-                return False
-            selected_drive = (drive or optical_drives[0]).replace(':', '')
+            disc_label = disc_label[:16] if len(disc_label) > 16 else disc_label            # First, get a list of available drives directly from CDBurnerXP
+            console.print("[cyan]Getting list of available drives from CDBurnerXP...[/cyan]")
+            try:
+                # Run the --list-drives command to get available drives
+                drives_cmd = f'"{cdburnerxp_path}" --list-drives'
+                logger.info(f"Executing drive detection command: {drives_cmd}")
+                drives_result = subprocess.run(drives_cmd, capture_output=True, text=True, shell=True)
+                
+                # Parse the output to get drive numbers and their corresponding letters
+                drive_mapping = {}
+                if drives_result.returncode == 0:
+                    drive_output = drives_result.stdout.strip()
+                    console.print(f"[dim]Available drives: \n{drive_output}[/dim]")
+                    
+                    # Parse output like "0: DVD RW (H:\)" to extract drive number and letter
+                    for line in drive_output.split('\n'):
+                        if ':' in line:
+                            try:
+                                parts = line.split(':', 1)
+                                drive_num = parts[0].strip()
+                                # Extract drive letter from parentheses like (H:\)
+                                if '(' in parts[1] and ')' in parts[1]:
+                                    drive_info = parts[1].strip()
+                                    drive_letter_match = re.search(r'\(([A-Z]):\\?\)', drive_info)
+                                    if drive_letter_match:
+                                        drive_letter = drive_letter_match.group(1)
+                                        drive_mapping[drive_letter] = drive_num
+                                        logger.info(f"Mapped drive {drive_letter}: to drive number {drive_num}")
+                            except Exception as parse_error:
+                                logger.error(f"Error parsing drive info '{line}': {parse_error}")
+                    
+                    logger.info(f"Found optical drives: {drive_mapping}")
+                else:
+                    logger.error(f"Error getting drive list: {drives_result.stderr}")
+                    console.print(f"[red]Error getting drive list: {drives_result.stderr}[/red]")
+            except Exception as e:
+                logger.error(f"Exception getting drive list: {e}")
+                console.print(f"[red]Exception getting drive list: {e}[/red]")
+                drive_mapping = {}
+            
+            if not drive_mapping:
+                # Fall back to detect_optical_drives if CDBurnerXP drive list fails
+                optical_drives = self.detect_optical_drives()
+                if not optical_drives:
+                    logger.error("No optical drives detected for burning")
+                    console.print("[bold red]Error: No optical drives detected[/bold red]")
+                    self.show_manual_burn_instructions(source_dir)
+                    return False
+                
+                # Use first detected drive number (default to 0)
+                selected_drive = "0"
+                console.print(f"[yellow]No drive mapping found, defaulting to drive 0[/yellow]")
+            else:
+                if drive:
+                    # User specified a drive letter, try to map to drive number
+                    drive_letter = drive.replace(':', '')
+                    if drive_letter in drive_mapping:
+                        selected_drive = drive_mapping[drive_letter]
+                    else:
+                        # If drive letter not found in mapping, use first available
+                        selected_drive = list(drive_mapping.values())[0]
+                        console.print(f"[yellow]Drive {drive} not found, using drive {selected_drive}[/yellow]")
+                else:
+                    # No drive specified, use first available
+                    selected_drive = list(drive_mapping.values())[0]
+                
+                console.print(f"[cyan]Using optical drive {selected_drive}[/cyan]")
             # Determine burn action and source folder based on content
             video_ts = os.path.join(source_dir, 'VIDEO_TS')
             # Check for VIDEO_TS folder for DVD-Video
@@ -1413,31 +1548,70 @@ class SpotifyBurner:
                     burn_folder = source_dir
                 else:
                     action = '--burn-data'
-                    burn_folder = source_dir
-            # Build CLI arguments
-            cmd = [
-                cdburnerxp_path,
-                action,
-                f'-device:{selected_drive}',
-                f'-folder:"{burn_folder}"',
-                f'-name:{disc_label}'
-            ]
-            # Add audio-specific mode
+                    burn_folder = source_dir            # According to the CDBurnerXP documentation, build command string
+            # Using the correct syntax for folder options and drive number (not letter)
+            # Make sure to properly escape and quote paths
+            
+            # Handle absolute paths to avoid issues
+            burn_folder_absolute = os.path.abspath(burn_folder)
+            cdburnerxp_path_absolute = os.path.abspath(cdburnerxp_path)
+            
+            # Build base command with properly quoted executable path
+            cmd_string = f'"{cdburnerxp_path_absolute}" {action} -device:{selected_drive}'
+            
+            # Handle source content based on action type
+            if action == '--burn-video':
+                # For DVD-Video, specify the full path of the VIDEO_TS folder
+                # Format: -folder:PATH with quotes for paths with spaces
+                cmd_string += f' -folder:"{burn_folder_absolute}"'
+            elif action == '--burn-audio':
+                # For audio discs, use the folder option with proper quoting
+                cmd_string += f' -folder:"{burn_folder_absolute}"'
+            else:
+                # For data discs, use the folder option with proper quoting
+                cmd_string += f' -folder:"{burn_folder_absolute}"'
+            
+            # Add disc name with proper escaping if it contains special characters
+            # Remove quotes from label if present and escape if needed
+            safe_label = disc_label.replace('"', '').replace("'", "")
+            cmd_string += f' -name:"{safe_label}"'
+              # Add audio-specific mode (only for CD-R/CD-RW)
             if action == '--burn-audio':
-                cmd.append('-dao')  # Disc-at-once for gapless
+                cmd_string += ' -dao'  # Disc-at-once for gapless
+                
             # Add speed if configured
             if self.burn_settings.get("speed"):
-                cmd.append(f'-speed:{self.burn_settings.get("speed")}')
+                cmd_string += f' -speed:{self.burn_settings.get("speed")}'
+                
+            # Add verification flag
             if self.burn_settings.get("verify"):
-                cmd.append('-verify')
+                cmd_string += ' -verify'
+                
+            # Add eject flag
             if self.burn_settings.get("eject"):
-                cmd.append('-eject')
+                cmd_string += ' -eject'
+                
             # Finalize disc
-            cmd.append('-close')
+            cmd_string += ' -close'
+                  # This command display will be handled in the execution section below# Log the command
+            logger.info(f"Executing CDBurnerXP command: {cmd_string}")
+            
+            # Display the command for better debugging
+            console.print("[bold cyan]Burning command details:[/bold cyan]")
+            console.print(f"[cyan]Action:[/cyan] {action}")
+            console.print(f"[cyan]Drive:[/cyan] {selected_drive}")
+            console.print(f"[cyan]Source:[/cyan] {burn_folder_absolute}")
+            console.print(f"[cyan]Disc label:[/cyan] {safe_label}")
+            console.print(f"[cyan]Full command:[/cyan] {cmd_string}")
             console.print("[cyan]Launching CDBurnerXP burning process...[/cyan]")
-            logger.info(f"Executing CDBurnerXP command: {' '.join(cmd)}")
-            # Run and capture output
-            process = subprocess.run(cmd, capture_output=True, text=True)
+            
+            # Execute the command with shell=True to properly handle quoted paths
+            try:
+                process = subprocess.run(cmd_string, capture_output=True, text=True, shell=True)
+            except Exception as run_error:
+                logger.error(f"Error executing CDBurnerXP: {run_error}")
+                console.print(f"[bold red]Error executing CDBurnerXP: {run_error}[/bold red]")
+                raise run_error
             if process.returncode == 0:
                 console.print("[green]Burn completed successfully![green]")
                 logger.info("Burn completed successfully")
@@ -2654,14 +2828,17 @@ class SpotifyBurner:
                     ) as progress:
                         task = progress.add_task(f"[cyan]Downloading album...{retry_suffix}", total=100)
                         
-                        # Build spotdl command
+                        # Build spotdl command with correct python interpreter
                         cmd = [
+                            str(PYTHON_PATH),
+                            "-m",
                             "spotdl",
                             "--output", output_dir,
                             "--format", self.audio_format,
                             "--bitrate", self.bitrate,
                             album_url
                         ]
+                        print(cmd)
                         
                         # Start the process with Popen to allow monitoring
                         process = subprocess.Popen(
