@@ -1868,8 +1868,7 @@ class SpotifyBurner:
             
             # Add menu options with icons
             table.add_row(
-                f"[bold {main_color}][1][/bold {main_color}]", 
-                "📁", 
+                f"[bold {main_color}][1][/bold {main_color}]",                "📁", 
                 f"[bold green]Manage Existing Albums[/bold green]\n  Play, burn or delete your downloaded albums"
             )
             table.add_row(
@@ -1887,10 +1886,12 @@ class SpotifyBurner:
                 "⚙️", 
                 f"[bold yellow]Settings[/bold yellow]\n  Configure download and burning options"
             )
-            table.add_row(                f"[bold {main_color}][5][/bold {main_color}]", 
+            table.add_row(
+                f"[bold {main_color}][5][/bold {main_color}]", 
                 "ℹ️", 
                 f"[bold blue]About / Help[/bold blue]"
-            )            # Display the menu table
+            )
+            # Display the menu table
             console.print(table)
             
             console.print()
