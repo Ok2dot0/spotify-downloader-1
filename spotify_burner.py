@@ -54,6 +54,14 @@ try:
 except ImportError:
     sys.exit("Required package 'spotipy' is missing. Please install it with: pip install spotipy")
 
+# Import AI Music Assistant (optional)
+try:
+    from ai_music_assistant import AIMusicAssistant
+    AI_AVAILABLE = True
+except ImportError:
+    AI_AVAILABLE = False
+    AIMusicAssistant = None
+
 # Define platform constants for better readability
 IS_WINDOWS = sys.platform.startswith('win')
 IS_MACOS = sys.platform == 'darwin'
@@ -522,6 +530,24 @@ class SpotifyBurner:
             "embed_lyrics": False,
             "overwrite_metadata": True
         })
+        
+        # Initialize AI Music Assistant if available
+        self.ai_assistant = None
+        if AI_AVAILABLE:
+            try:
+                ai_config = self.config.get("ai_settings", {})
+                # Add environment variables to config
+                ai_config.update({
+                    'ai_provider': os.getenv('AI_PROVIDER', ai_config.get('ai_provider', 'ollama')),
+                    'ai_model': os.getenv('AI_MODEL', ai_config.get('ai_model', 'llama3.2-vision:latest')),
+                    'ai_enable_vision': os.getenv('AI_ENABLE_VISION', 'true').lower() == 'true'
+                })
+                self.ai_assistant = AIMusicAssistant(ai_config)
+                logger.info("AI Music Assistant initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize AI Music Assistant: {e}")
+                self.ai_assistant = None
+        
         self.download_queue = queue.Queue()
         self.download_threads = []
         self.stop_threads = False
@@ -1881,13 +1907,27 @@ class SpotifyBurner:
                 "🎬", 
                 f"[bold magenta]Video Management[/bold magenta]\n  Download and manage videos"
             )
+            
+            # Add AI Music Discovery option if available
+            if self.ai_assistant and self.ai_assistant.is_available():
+                table.add_row(
+                    f"[bold {main_color}][4][/bold {main_color}]", 
+                    "🤖", 
+                    f"[bold bright_blue]AI Music Discovery[/bold bright_blue]\n  Use AI to analyze images and find music"
+                )
+                settings_key = "5"
+                about_key = "6"
+            else:
+                settings_key = "4"
+                about_key = "5"
+            
             table.add_row(
-                f"[bold {main_color}][4][/bold {main_color}]", 
+                f"[bold {main_color}][{settings_key}][/bold {main_color}]", 
                 "⚙️", 
                 f"[bold yellow]Settings[/bold yellow]\n  Configure download and burning options"
             )
             table.add_row(
-                f"[bold {main_color}][5][/bold {main_color}]", 
+                f"[bold {main_color}][{about_key}][/bold {main_color}]", 
                 "ℹ️", 
                 f"[bold blue]About / Help[/bold blue]"
             )
@@ -1898,9 +1938,16 @@ class SpotifyBurner:
             
             # Make prompt match the theme
             prompt_style = f"bold {main_color}" if main_color != "white" else "bold cyan"
+            
+            # Determine available choices based on AI availability
+            if self.ai_assistant and self.ai_assistant.is_available():
+                choices = ["1", "2", "3", "4", "5", "6", "Q", "q"]
+            else:
+                choices = ["1", "2", "3", "4", "5", "Q", "q"]
+                
             choice = Prompt.ask(
                 f"[{prompt_style}]Select an option[/{prompt_style}]",
-                choices=["1", "2", "3", "4", "5", "Q", "q"],
+                choices=choices,
                 default="2"
             ).upper()
             
@@ -1911,8 +1958,19 @@ class SpotifyBurner:
             elif choice == "3":
                 self.show_video_menu()
             elif choice == "4":
-                self.manage_settings()
+                # Check if this is AI menu or settings based on availability
+                if self.ai_assistant and self.ai_assistant.is_available():
+                    self.show_ai_menu()
+                else:
+                    self.manage_settings()
             elif choice == "5":
+                # This is either settings or about based on AI availability
+                if self.ai_assistant and self.ai_assistant.is_available():
+                    self.manage_settings()
+                else:
+                    self.about_app()
+            elif choice == "6":
+                # Only available when AI is active - this is about
                 self.about_app()
             elif choice == "Q":
                 console.print("[bold green]Thank you for using Spotify Album Downloader and Burner![bold green]")
@@ -2448,6 +2506,334 @@ class SpotifyBurner:
                         break
             elif choice == "3":
                 break
+
+    def show_ai_menu(self):
+        """Display AI Music Discovery menu and handle AI-powered features."""
+        if not self.ai_assistant or not self.ai_assistant.is_available():
+            console.print("[red]AI functionality is not available. Please check your configuration.[/red]")
+            self.wait_for_keypress()
+            return
+
+        while True:
+            self.clear_screen()
+            self.show_header()
+            
+            # Get theme colors for consistent styling
+            main_color = app_state["theme"]["main"] if "theme" in app_state else "cyan"
+            accent_color = app_state["theme"]["accent"] if "theme" in app_state else "green"
+            box_style = app_state["theme"]["box"] if "theme" in app_state else box.ROUNDED
+            border_style = app_state["theme"]["border"] if "theme" in app_state else "cyan"
+            
+            # AI Status Panel
+            ai_status = self.ai_assistant.get_availability_status()
+            status_text = f"Provider: {ai_status['current_provider']}\nModel: {ai_status['model']}\nVision: {'✅' if ai_status['vision_enabled'] else '❌'}"
+            
+            console.print(Panel(
+                status_text,
+                title="🤖 AI Music Discovery",
+                border_style=border_style,
+                box=box_style,
+                width=get_adaptive_width("panel")
+            ))
+            
+            console.print()
+            
+            # Create AI menu options table
+            table = Table(show_header=False, box=box_style, show_edge=False)
+            table.add_column("Key", style=main_color, justify="right", width=6)
+            table.add_column("Icon", style="bright_white", justify="center", width=4)
+            table.add_column("Option", style="white", max_width=80)
+            
+            # Add AI menu options
+            table.add_row(
+                f"[bold {main_color}][1][/bold {main_color}]",
+                "🖼️", 
+                f"[bold {accent_color}]Analyze Image for Music[/bold {accent_color}]\n  Upload an image to discover related music"
+            )
+            table.add_row(
+                f"[bold {main_color}][2][/bold {main_color}]", 
+                "📝", 
+                f"[bold green]Analyze Text for Music[/bold green]\n  Enter text to find related music"
+            )
+            table.add_row(
+                f"[bold {main_color}][3][/bold {main_color}]", 
+                "🔍", 
+                f"[bold yellow]AI Search History[/bold yellow]\n  View previous AI-powered searches"
+            )
+            table.add_row(
+                f"[bold {main_color}][4][/bold {main_color}]", 
+                "⚙️", 
+                f"[bold magenta]AI Settings[/bold magenta]\n  Configure AI provider and model"
+            )
+            
+            console.print(table)
+            console.print()
+            
+            # Make prompt match the theme
+            prompt_style = f"bold {main_color}" if main_color != "white" else "bold cyan"
+            choice = Prompt.ask(
+                f"[{prompt_style}]Select an option (or 'B' to go back)[/{prompt_style}]",
+                choices=["1", "2", "3", "4", "B", "b"],
+                default="1"
+            ).upper()
+            
+            if choice == "1":
+                self.ai_analyze_image()
+            elif choice == "2":
+                self.ai_analyze_text()
+            elif choice == "3":
+                self.ai_show_history()
+            elif choice == "4":
+                self.ai_manage_settings()
+            elif choice == "B":
+                break
+
+    def ai_analyze_image(self):
+        """Handle image analysis for music discovery."""
+        console.print("\n[bold cyan]🖼️ AI Image Analysis for Music Discovery[/bold cyan]")
+        console.print()
+        
+        # Get supported file types
+        supported_types = self.ai_assistant.supported_file_types()
+        image_types = [t for t in supported_types if t.startswith('.')]
+        
+        console.print(f"[dim]Supported formats: {', '.join(image_types)}[/dim]")
+        console.print()
+        
+        # Prompt for image path
+        image_path = Prompt.ask(
+            "[cyan]Enter the path to your image file[/cyan]",
+            default=""
+        )
+        
+        if not image_path:
+            console.print("[yellow]No image path provided.[/yellow]")
+            self.wait_for_keypress()
+            return
+            
+        image_path = Path(image_path).expanduser()
+        
+        if not image_path.exists():
+            console.print(f"[red]File not found: {image_path}[/red]")
+            self.wait_for_keypress()
+            return
+            
+        if image_path.suffix.lower() not in image_types:
+            console.print(f"[red]Unsupported file format: {image_path.suffix}[/red]")
+            console.print(f"[dim]Supported: {', '.join(image_types)}[/dim]")
+            self.wait_for_keypress()
+            return
+        
+        # Analyze the image
+        console.print("\n[bold yellow]🤖 Analyzing image with AI...[/bold yellow]")
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold cyan]Processing image with AI vision model...[/bold cyan]"),
+            console=console,
+            transient=True
+        ) as progress:
+            progress.add_task("analyze", total=None)
+            analysis_result = self.ai_assistant.analyze_image(image_path)
+        
+        if not analysis_result:
+            console.print("[red]Failed to analyze the image. Please check your AI configuration.[/red]")
+            self.wait_for_keypress()
+            return
+            
+        # Display analysis results
+        self.display_ai_analysis_results(analysis_result)
+        
+        # Generate and execute searches
+        queries = self.ai_assistant.generate_search_queries(analysis_result)
+        if queries:
+            console.print(f"\n[bold green]🔍 Generated {len(queries)} search queries based on analysis:[/bold green]")
+            for i, query in enumerate(queries, 1):
+                console.print(f"  {i}. [cyan]{query}[/cyan]")
+                
+            console.print()
+            if Confirm.ask("[bold]Would you like to search for music using these AI-generated queries?[/bold]"):
+                self.execute_ai_searches(queries)
+        else:
+            console.print("[yellow]No search queries could be generated from the image analysis.[/yellow]")
+            
+        self.wait_for_keypress()
+
+    def ai_analyze_text(self):
+        """Handle text analysis for music discovery."""
+        console.print("\n[bold cyan]📝 AI Text Analysis for Music Discovery[/bold cyan]")
+        console.print()
+        
+        # Prompt for text input
+        text = Prompt.ask(
+            "[cyan]Enter text to analyze (song lyrics, artist info, music description, etc.)[/cyan]",
+            default=""
+        )
+        
+        if not text.strip():
+            console.print("[yellow]No text provided.[/yellow]")
+            self.wait_for_keypress()
+            return
+        
+        # Analyze the text
+        console.print("\n[bold yellow]🤖 Analyzing text with AI...[/bold yellow]")
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold cyan]Processing text with AI model...[/bold cyan]"),
+            console=console,
+            transient=True
+        ) as progress:
+            progress.add_task("analyze", total=None)
+            analysis_result = self.ai_assistant.analyze_text(text)
+        
+        if not analysis_result:
+            console.print("[red]Failed to analyze the text. Please check your AI configuration.[/red]")
+            self.wait_for_keypress()
+            return
+            
+        # Display analysis results
+        self.display_ai_analysis_results(analysis_result)
+        
+        # Generate and execute searches
+        queries = self.ai_assistant.generate_search_queries(analysis_result)
+        if queries:
+            console.print(f"\n[bold green]🔍 Generated {len(queries)} search queries based on analysis:[/bold green]")
+            for i, query in enumerate(queries, 1):
+                console.print(f"  {i}. [cyan]{query}[/cyan]")
+                
+            console.print()
+            if Confirm.ask("[bold]Would you like to search for music using these AI-generated queries?[/bold]"):
+                self.execute_ai_searches(queries)
+        else:
+            console.print("[yellow]No search queries could be generated from the text analysis.[/yellow]")
+            
+        self.wait_for_keypress()
+
+    def display_ai_analysis_results(self, result: Dict[str, Any]):
+        """Display AI analysis results in a formatted panel."""
+        if not result:
+            return
+            
+        # Get theme colors
+        box_style = app_state["theme"]["box"] if "theme" in app_state else box.ROUNDED
+        border_style = app_state["theme"]["border"] if "theme" in app_state else "cyan"
+        
+        # Build result text
+        result_lines = []
+        
+        if result.get('detected_artists'):
+            result_lines.append(f"[bold green]🎤 Artists:[/bold green] {', '.join(result['detected_artists'])}")
+            
+        if result.get('detected_albums'):
+            result_lines.append(f"[bold blue]💿 Albums:[/bold blue] {', '.join(result['detected_albums'])}")
+            
+        if result.get('detected_songs'):
+            result_lines.append(f"[bold yellow]🎵 Songs:[/bold yellow] {', '.join(result['detected_songs'])}")
+            
+        if result.get('music_genre'):
+            result_lines.append(f"[bold magenta]🎭 Genre:[/bold magenta] {result['music_genre']}")
+            
+        if result.get('search_keywords'):
+            result_lines.append(f"[bold cyan]🔑 Keywords:[/bold cyan] {', '.join(result['search_keywords'])}")
+            
+        if result.get('confidence'):
+            confidence_percent = int(result['confidence'] * 100)
+            result_lines.append(f"[bold white]🎯 Confidence:[/bold white] {confidence_percent}%")
+            
+        if result.get('description'):
+            result_lines.append(f"\n[dim italic]{result['description']}[/dim italic]")
+            
+        # Add provider info
+        provider_info = f"AI Provider: {result.get('provider', 'unknown')} | Model: {result.get('model', 'unknown')}"
+        result_lines.append(f"\n[dim]{provider_info}[/dim]")
+        
+        result_text = "\n".join(result_lines) if result_lines else "[yellow]No musical content detected.[/yellow]"
+        
+        console.print(Panel(
+            result_text,
+            title="🤖 AI Analysis Results",
+            border_style=border_style,
+            box=box_style,
+            width=get_adaptive_width("panel")
+        ))
+
+    def execute_ai_searches(self, queries: List[str]):
+        """Execute multiple AI-generated search queries and let user choose results."""
+        all_results = []
+        
+        for i, query in enumerate(queries, 1):
+            console.print(f"\n[bold]🔍 Searching with query {i}/{len(queries)}:[/bold] [cyan]{query}[/cyan]")
+            
+            try:
+                # Use existing search functionality
+                results = self.search_music(query)
+                if results:
+                    all_results.extend(results[:3])  # Take top 3 results per query
+            except Exception as e:
+                logger.error(f"AI search failed for query '{query}': {e}")
+                console.print(f"[red]Search failed for: {query}[/red]")
+        
+        if not all_results:
+            console.print("[yellow]No results found for any of the AI-generated queries.[/yellow]")
+            return
+            
+        # Remove duplicates based on Spotify URI
+        unique_results = []
+        seen_uris = set()
+        for result in all_results:
+            uri = result.get('uri', '')
+            if uri and uri not in seen_uris:
+                unique_results.append(result)
+                seen_uris.add(uri)
+        
+        console.print(f"\n[bold green]🎵 Found {len(unique_results)} unique results from AI analysis![/bold green]")
+        
+        if unique_results:
+            # Display results and let user select
+            self.display_search_results(unique_results)
+            
+            # Get user selection
+            choice = Prompt.ask(
+                "\nSelect a result to download",
+                choices=[str(i) for i in range(1, len(unique_results) + 1)] + ["0"],
+                default="1"
+            )
+            
+            if choice != "0":
+                selected_result = unique_results[int(choice) - 1]
+                console.print(f"\n[bold green]Selected:[/bold green] {selected_result.get('name', 'Unknown')}")
+                
+                # Use existing download functionality
+                if Confirm.ask("Download this selection?"):
+                    self.display_detailed_info(selected_result)
+                    tracks = self.get_tracks_from_selection(selected_result)
+                    if tracks:
+                        self.download_tracks(tracks, album_url=selected_result.get('uri', ''))
+
+    def ai_show_history(self):
+        """Show AI search history (placeholder for future implementation)."""
+        console.print(Panel(
+            "[yellow]AI search history feature coming soon![/yellow]\n\n" +
+            "This will show your previous AI-powered searches and results.",
+            title="🔍 AI Search History",
+            border_style="yellow"
+        ))
+        self.wait_for_keypress()
+
+    def ai_manage_settings(self):
+        """Manage AI-specific settings."""
+        console.print(Panel(
+            "[yellow]AI settings management coming soon![/yellow]\n\n" +
+            "This will allow you to configure:\n" +
+            "• AI Provider (Ollama, OpenAI, Anthropic)\n" +
+            "• Model selection\n" +
+            "• Vision capabilities\n" +
+            "• API keys",
+            title="⚙️ AI Settings",
+            border_style="yellow"
+        ))
+        self.wait_for_keypress()
 
     def manage_settings(self):
         """Manage application settings including CDBurnerXP options."""
