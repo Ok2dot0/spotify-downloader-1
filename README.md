@@ -1,6 +1,6 @@
 # Spotify Album Downloader and Burner v2.0.0
 
-A powerful command-line and menu-driven application that lets you search for songs or albums on Spotify, display them with detailed information, download them using multithreaded performance, and burn them directly to CD/DVD using native Windows IMAPI2 COM interface.
+A powerful command-line and menu-driven application that lets you search for songs or albums on Spotify, display them with detailed information, download them using multithreaded performance, and burn them directly to CD/DVD using native Windows IMAPI2 COM interface. **NEW: Now features AI-powered music discovery using Llama 3.2 Vision and other multimodal AI models!**
 
 ![Spotify Downloader and Burner](https://img.shields.io/badge/Spotify-Downloader-1DB954?style=for-the-badge&logo=spotify&logoColor=white)
 [![Python Package](https://github.com/username/spotify-burner/actions/workflows/python-package.yml/badge.svg)](https://github.com/username/spotify-burner/actions/workflows/python-package.yml)
@@ -10,11 +10,14 @@ A powerful command-line and menu-driven application that lets you search for son
 ## 🌟 Features
 
 - 🔍 **Powerful Search**: Find tracks and albums on Spotify with ease
+- 🤖 **AI Music Discovery**: NEW! Use Llama 3.2 Vision to analyze images and find music
+- 📷 **Image Analysis**: Upload album covers, concert posters, or music-related photos
+- 📝 **Text Analysis**: Analyze lyrics, descriptions, or music-related text  
 - ⚡ **Multithreaded Downloads**: Download multiple tracks simultaneously for maximum speed
 - 💿 **Direct CD/DVD Burning**: Burn your music to disc using native Windows IMAPI2 interface
 - 🎵 **Multiple Audio Formats**: Choose from MP3, FLAC, OGG, and more
 - 📊 **Library Management**: Organize, play, and manage your downloaded music
-- ⚙️ **Advanced Settings**: Customize download location, audio quality, and more
+- ⚙️ **Advanced Settings**: Customize download location, audio quality, and AI providers
 - 🎛️ **User-Friendly Interface**: Beautiful terminal interface using Rich and Colorama
 
 ## 📋 Requirements
@@ -22,6 +25,7 @@ A powerful command-line and menu-driven application that lets you search for son
 - Python 3.6+
 - Windows OS for native CD/DVD burning (fallback options for other platforms)
 - Spotify Developer API credentials
+- **AI Features (Optional)**: Ollama, OpenAI API, or Anthropic API for AI music discovery
 
 ## 💻 Installation
 
@@ -71,6 +75,38 @@ pip install "spotify-album-burner[dev]"
    
    **Method C**: Enter them when prompted on first run
 
+### Setting up AI Music Discovery (Optional)
+
+The application now supports AI-powered music discovery using multimodal AI models like Llama 3.2 Vision. Choose one of these providers:
+
+#### Option A: Ollama (Local, Free)
+1. Install [Ollama](https://ollama.ai/)
+2. Pull the Llama 3.2 Vision model: `ollama pull llama3.2-vision:latest`
+3. Set environment variables:
+   ```bash
+   export AI_PROVIDER=ollama
+   export AI_MODEL=llama3.2-vision:latest
+   export OLLAMA_BASE_URL=http://localhost:11434
+   ```
+
+#### Option B: OpenAI (Cloud, Paid)
+1. Get an API key from [OpenAI](https://platform.openai.com/api-keys)
+2. Set environment variables:
+   ```bash
+   export AI_PROVIDER=openai
+   export AI_MODEL=gpt-4-vision-preview
+   export OPENAI_API_KEY=your_openai_api_key
+   ```
+
+#### Option C: Anthropic (Cloud, Paid)
+1. Get an API key from [Anthropic](https://console.anthropic.com/)
+2. Set environment variables:
+   ```bash
+   export AI_PROVIDER=anthropic  
+   export AI_MODEL=claude-3-sonnet-20240229
+   export ANTHROPIC_API_KEY=your_anthropic_api_key
+   ```
+
 ## 🚀 Usage
 
 ### Menu-Driven Interface
@@ -89,8 +125,9 @@ This will open the main menu with the following options:
 1. **Manage Existing Albums** - Play, burn or delete your downloaded albums
 2. **Search & Download** - Find and download new music from Spotify
 3. **Video Management** - Download and manage videos from URLs
-4. **Settings** - Configure download and burning options
-5. **About** - Information about the application
+4. **AI Music Discovery** - Use AI to analyze images and find music (if configured)
+5. **Settings** - Configure download and burning options
+6. **About** - Information about the application
 
 ### Command-Line Usage
 
@@ -125,6 +162,33 @@ options:
 ```
 
 ## 🔥 Key Features in Detail
+
+### 🤖 AI Music Discovery (NEW!)
+
+The application now includes advanced AI capabilities for discovering music through multimodal analysis:
+
+#### Image Analysis
+- Upload album covers, concert posters, or music-related photos
+- AI analyzes images to identify artists, albums, songs, and genres
+- Automatically generates optimized Spotify search queries
+- Supports multiple image formats (JPG, PNG, GIF, BMP, WebP)
+
+#### Text Analysis  
+- Analyze song lyrics, artist descriptions, or music-related text
+- Extract musical entities and context using natural language processing
+- Generate targeted search queries based on textual content
+
+#### Supported AI Models
+- **Llama 3.2 Vision** (via Ollama): Free, local processing
+- **GPT-4 Vision** (via OpenAI): Cloud-based, high accuracy
+- **Claude 3 Vision** (via Anthropic): Cloud-based, nuanced analysis
+
+#### How It Works
+1. Select "AI Music Discovery" from the main menu
+2. Choose to analyze an image file or enter text
+3. AI processes the input and extracts musical information
+4. Generated search queries are executed on Spotify
+5. Select and download music using the existing workflow
 
 ### Multithreaded Downloads
 
@@ -177,6 +241,10 @@ This application uses several excellent open-source projects:
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) - Video downloading functionality
 - [Colorama](https://github.com/tartley/colorama) - Cross-platform colored terminal output
 - [Python-dotenv](https://github.com/theskumar/python-dotenv) - Environment variable management
+- [Pillow](https://github.com/python-pillow/Pillow) - Image processing for AI features
+- [Ollama](https://ollama.ai/) - Local AI model serving (optional)
+- [OpenAI](https://openai.com/) - GPT-4 Vision API (optional)
+- [Anthropic](https://anthropic.com/) - Claude 3 Vision API (optional)
 
 ## 📄 License
 

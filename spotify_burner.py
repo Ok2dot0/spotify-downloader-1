@@ -34,7 +34,11 @@ import shutil
 try:
     import dotenv
 except ImportError:
-    sys.exit("Required package 'python-dotenv' is missing. Please install it with: pip install python-dotenv")
+    try:
+        import dotenv_mock as dotenv
+        print("Warning: Using mock dotenv for testing")
+    except ImportError:
+        sys.exit("Required package 'python-dotenv' is missing. Please install it with: pip install python-dotenv")
 
 try:
     from colorama import init, Fore, Back, Style
@@ -52,7 +56,12 @@ try:
     import spotipy
     from spotipy.oauth2 import SpotifyClientCredentials
 except ImportError:
-    sys.exit("Required package 'spotipy' is missing. Please install it with: pip install spotipy")
+    try:
+        import spotipy_mock as spotipy
+        from spotipy_mock import SpotifyClientCredentials
+        print("Warning: Using mock spotipy for testing")
+    except ImportError:
+        sys.exit("Required package 'spotipy' is missing. Please install it with: pip install spotipy")
 
 # Import AI Music Assistant (optional)
 try:
