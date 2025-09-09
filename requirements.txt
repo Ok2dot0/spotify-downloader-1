@@ -10,6 +10,13 @@ tqdm
 concurrent-log-handler
 yt-dlp
 
+# AI/ML dependencies for multimodal support
+ollama
+openai
+transformers
+torch
+torchvision
+
 # Windows-specific dependencies
 pywin32
 comtypes

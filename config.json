@@ -18,5 +18,13 @@
         "save_album_art": true,
         "embed_lyrics": false,
         "overwrite_metadata": true
+    },
+    "ai_settings": {
+        "ai_provider": "ollama",
+        "ai_model": "llama3.2-vision:latest",
+        "ai_enable_vision": true,
+        "ai_max_file_size_mb": 10,
+        "ai_supported_formats": [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".txt", ".md"],
+        "ai_confidence_threshold": 0.5
     }
 }
